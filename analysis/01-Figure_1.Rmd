@@ -1,0 +1,854 @@
+---
+title: "Figure 1"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
+site: workflowr::wflow_site
+output:
+  workflowr::wflow_html:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Setup {.tabset .tabset-pills}
+## Load the libraries
+```{r message=FALSE, warning=FALSE}
+suppressPackageStartupMessages({
+## Key
+library(Seurat)
+library(MAST)
+library(ProjecTILs)
+
+## Wrangling
+library(stringr)
+library(tidyr)
+library(dplyr)
+#library(nichenetr)
+
+## Visualization
+library(pals)
+library(DT)
+library(ggplot2)
+library(ggpubr)
+library(RColorBrewer)
+library(circlize)
+library(ComplexHeatmap)
+library(ggvenn)
+library(ggalluvial)
+library(stringr)
+library(readr)
+library(gridExtra)
+library(tibble)
+library(enrichR)
+library(EnhancedVolcano)
+library(openxlsx)
+library(svglite)
+library(cowplot)
+})
+```
+
+## Load Data
+```{r}
+Tc <- readRDS("../objects/Tc.rds")
+Tc_4 <- readRDS("../objects/Tc_4.rds")
+Tc_8 <- readRDS("../objects/Tc_8.rds")
+```
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = F, message = F, dpi = 300)
+functions <- list.files("../code/", pattern = "\\.R$", full.names = TRUE)
+invisible(lapply(functions, source))
+```
+
+## Set up output directories
+```{r}
+dir.create("../docs/assets/01-Figure-1")
+```
+## Design Elements
+```{r}
+# Create vector colors
+cols <- readRDS("../docs/assets/00-DesignElements/DesignElements.rds")
+```
+
+```{r}
+pt_to_mm <- function(pt) pt / 2.95
+txt_pt <- 10
+txt_mm <- txt_pt / 2.95
+cex_base <- txt_pt / 12
+```
+
+## label levels
+```{r}
+lvl_4 <- c(
+  "CD4 TN",
+  "CD4 TSM",
+  "CD4 THDM",
+  "CD4 TH1DM",
+  "CD4 TCTLDM",
+  "CD4 Regulatory",
+  "CD4 Proliferating")
+
+lab_4 <- c(
+  "CD4 TN"            = expression("CD4 TN"),
+  "CD4 TSM"           = expression("CD4 TSM"),
+  "CD4 THDM"          = expression("CD4 " * T[H] * DM),
+  "CD4 TH1DM"         = expression("CD4 " * T[H1] * DM),
+  "CD4 TCTLDM"        = expression("CD4 " * T[CTL] * DM),
+  "CD4 Regulatory"    = expression("CD4 " * T[reg]),
+  "CD4 Proliferating" = expression("CD4 Proliferating"))
+
+
+lvl_8 <- c(
+  "CD8 TN",
+  "CD8 TM",
+  "CD8 Tc1DM",
+  "CD8 TCTLDM",
+  "CD8 Tc1-CTLDM",
+  "CD8 Proliferating"
+)
+
+lab_8 <- c(
+  "CD8 TN"              = expression("CD8 TN"),
+  "CD8 TM"             = expression("CD8 TM"),
+  "CD8 Tc1DM"           = expression("CD8 " * T[c1] * DM),
+  "CD8 TCTLDM"           = expression("CD8 " * T[CTL] * DM),
+  "CD8 Tc1-CTLDM"       = expression("CD8 " * T[c1*"-"*CTL] * DM),
+  "CD8 Proliferating"   = expression("CD8 Proliferating")
+)
+
+lvl_4 <- c(
+  "CD4 TN",
+  "CD4 TSM",
+  "CD4 THDM",
+  "CD4 TH1DM",
+  "CD4 TCTLDM",
+  "CD4 Regulatory",
+  "CD4 Proliferating")
+
+lab_4 <- c(
+  "CD4 TN"            = expression("CD4 TN"),
+  "CD4 TSM"           = expression("CD4 TSM"),
+  "CD4 THDM"          = expression("CD4 " * T[H] * DM),
+  "CD4 TH1DM"         = expression("CD4 " * T[H1] * DM),
+  "CD4 TCTLDM"        = expression("CD4 " * T[CTL] * DM),
+  "CD4 Regulatory"    = expression("CD4 " * T[reg]),
+  "CD4 Proliferating" = expression("CD4 Proliferating"))
+
+
+lvl <- c(
+  "CD4 TN",
+  "CD4 TSM",
+  "CD4 THDM",
+  "CD4 TH1DM",
+  "CD4 TCTLDM",
+  "CD4 Regulatory",
+  "CD8 TN",
+  "CD8 TM",
+  "CD8 Tc1DM",
+  "CD8 TCTLDM",
+  "CD8 Tc1-CTLDM")
+
+lab <- c(
+  "CD4 TN"            = expression("CD4 TN"),
+  "CD4 TSM"           = expression("CD4 TSM"),
+  "CD4 THDM"          = expression("CD4 " * T[H] * DM),
+  "CD4 TH1DM"         = expression("CD4 " * T[H1] * DM),
+  "CD4 TCTLDM"        = expression("CD4 " * T[CTL] * DM),
+  "CD4 Regulatory"    = expression("CD4 " * T[reg]),
+  "CD8 TN"              = expression("CD8 TN"),
+  "CD8 TM"             = expression("CD8 TM"),
+  "CD8 Tc1DM"           = expression("CD8 " * T[c1] * DM),
+  "CD8 TCTLDM"           = expression("CD8 " * T[CTL] * DM),
+  "CD8 Tc1-CTLDM"       = expression("CD8 " * T[c1*"-"*CTL] * DM)
+)
+
+```
+
+#-----Clustering------ {.tabset .tabset-pills .tabset-fade}
+## UMAPs
+```{r}
+Idents(Tc_4) <- "celltype"
+svglite("../docs/assets/01-Figure-1/CD4_UMAP.svg", width = 1.5, height = 1.5)
+DimPlot(Tc_4, pt.size = 0.1, cols = cols$celltype[levels(Tc_4)]) & NoAxes() & NoLegend() & theme(aspect.ratio = 1)
+invisible(dev.off())
+
+Idents(Tc_8) <- "celltype"
+svglite("../docs/assets/01-Figure-1/CD8_UMAP.svg", width = 1.5, height = 1.5)
+DimPlot(Tc_8, pt.size = 0.1, cols = cols$celltype[levels(Tc_8)]) & NoAxes() & NoLegend() & theme(aspect.ratio = 1)
+
+invisible(dev.off())
+Idents(Tc_4) <- "PB"
+svglite("../docs/assets/01-Figure-1/CD4_UMAP_Tissue.svg", width = 1.5, height = 1.5)
+DimPlot(Tc_4, pt.size = 0.1, cols = cols$Tissue, split.by = "PB", ncol = 1) & NoAxes() & NoLegend() & theme(aspect.ratio = 1, strip.text = element_blank())
+invisible(dev.off())
+
+Idents(Tc_8) <- "PB"
+svglite("../docs/assets/01-Figure-1/CD8_UMAP_Tissue.svg", width = 1.5, height = 1.5)
+DimPlot(Tc_8, pt.size = 0.1, cols = cols$Tissue, split.by = "PB", ncol = 1) & NoAxes() & NoLegend() & theme(aspect.ratio = 1, strip.text = element_blank())
+invisible(dev.off())
+
+knitr::include_graphics("../docs/assets/01-Figure-1/CD4_UMAP.svg")
+knitr::include_graphics("../docs/assets/01-Figure-1/CD8_UMAP.svg")
+knitr::include_graphics("../docs/assets/01-Figure-1/CD4_UMAP_Tissue.svg")
+knitr::include_graphics("../docs/assets/01-Figure-1/CD8_UMAP_Tissue.svg")
+```
+
+# Cluster Description
+## DEG
+```{r}
+Idents(Tc_4) <- "celltype"
+CD4 <- FindAllMarkers(Tc_4, min.pct = 0.2, logfc.threshold = 0.25, test.use = "MAST", only.pos = T)
+CD4 <- subset(CD4, p_val_adj < 0.05)
+
+Idents(Tc_8) <- "celltype"
+CD8 <- FindAllMarkers(Tc_8, min.pct = 0.2, logfc.threshold = 0.25, test.use = "MAST", only.pos = T)
+CD8 <- subset(CD8, p_val_adj < 0.05)
+```
+
+## Dot
+```{r}
+helper_feats <- list(
+  Naive = c("CCR7", "SELL", "LEF1", "TCF7"),
+  Activation = c("CD40LG", "CD69", "CCL5", "IFNG", "CXCR4","TNF"),
+  Cytotoxic = c("GZMB", "GNLY", "CX3CR1", "TBX21"),
+  Treg = c("FOXP3","IL2RA","CTLA4"),
+  Prolif = c("MKI67", "TOP2A", "STMN1")
+)
+
+Dot_4 <- seu_gene_sets_dot(Tc_4,
+    helper_feats,                         # named list: list("Group A"=c("G1","G2(+)"), "Group B"=c(...))
+    group_by = "celltype",              # meta.data column (like DotPlot(group.by=))
+    assay    = NULL,                   # NULL => DefaultAssay(seu)
+    use_scaled_for_fill = T,        # TRUE: fill = avg.exp.scaled; FALSE: avg.exp (raw)
+    # aesthetics (DotPlot-like)
+    size_range   = c(1, 5),           # bubble size range
+    size_breaks  = c(1, 10, 100),  # % expressing
+    size_limits  = c(0, 100),          # % expressing limits
+    fill_limits  = c(-1, 1.5),           # when use_scaled_for_fill=TRUE
+    fill_palette = c("blue", "lightgrey", "darkred"),
+    x_label      = "",
+    base_size    = txt_pt,
+    x_angle      = 45,
+    x_text_size  = txt_pt-2,
+    y_text_size  = txt_pt,
+    x_title_size = txt_pt,
+    bracket_text_size = txt_mm,
+    bracket_tick = 0.25,
+    # layout/headroom controls
+    y_expand_add_bottom = 0.60,        # add bottom padding (lifts dots off x-axis)
+    y_expand_add_top    = 0.25,        # add top padding (reduces headroom)
+    y_bracket_offset    = 0.80,        # bracket baseline above top row (in "row" units)
+    y_label_offset      = 0.18,        # text above bracket baseline
+    plot_margin_cm      = c(1.2, 0.6, 0.6, 0.6),  # top, right, bottom, left
+    # NEW: clustering options
+    cluster_groups = F,            # reorder rows (clusters) by hclut
+    cluster_genes  = "within_group",
+    dist_method    = "euclidean",
+    hclust_method  = "complete") + theme(text = element_text(family = "Times")) + scale_y_discrete(limits = lvl_4, labels = lab_4)
+
+cyto_feats <- list(
+  Naive = c("CCR7", "LEF1","SELL", "TCF7"),
+  Cytokine = c("CD44", "IFNG","TNF","CCL4"),  
+  Cytotoxic = c("GZMB","PRF1","NKG7","GZMB","GNLY","TBX21","ZEB2","CX3CR1"),
+  Prolif = c("MKI67", "TOP2A", "STMN1")
+)
+
+Dot_8 <- seu_gene_sets_dot(Tc_8,
+    cyto_feats,                         # named list: list("Group A"=c("G1","G2(+)"), "Group B"=c(...))
+    group_by = "celltype",              # meta.data column (like DotPlot(group.by=))
+    assay    = NULL,                   # NULL => DefaultAssay(seu)
+    use_scaled_for_fill = T,        # TRUE: fill = avg.exp.scaled; FALSE: avg.exp (raw)
+    # aesthetics (DotPlot-like)
+    size_range   = c(1, 5),           # bubble size range
+    size_breaks  = c(1, 10, 100),  # % expressing
+    size_limits  = c(0, 100),          # % expressing limits
+    fill_limits  = c(-1, 1.5),           # when use_scaled_for_fill=TRUE
+    fill_palette = c("blue", "lightgrey", "darkred"),
+    x_label      = "",
+    base_size    = txt_pt,
+    x_angle      = 45,
+    x_text_size  = txt_pt-2,
+    y_text_size  = txt_pt,
+    x_title_size = txt_pt,
+    bracket_text_size = txt_mm,
+    bracket_tick = 0.25,
+    # layout/headroom controls
+    y_expand_add_bottom = 0.60,        # add bottom padding (lifts dots off x-axis)
+    y_expand_add_top    = 0.25,        # add top padding (reduces headroom)
+    y_bracket_offset    = 0.80,        # bracket baseline above top row (in "row" units)
+    y_label_offset      = 0.18,        # text above bracket baseline
+    plot_margin_cm      = c(1.2, 0.6, 0.6, 0.6),  # top, right, bottom, left
+    # NEW: clustering options
+    cluster_groups = F,            # reorder rows (clusters) by hclut
+    cluster_genes  = "within_group",
+    dist_method    = "euclidean",
+    hclust_method  = "complete") + theme(text = element_text(family = "Times")) + scale_y_discrete(limits = lvl_8, labels = lab_8) +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal"
+  )
+
+plot_4 <- Dot_4 + NoLegend()
+plot_8 <- Dot_8 + NoLegend()
+
+svglite("../docs/assets/01-Figure-1/cluster_data.svg", width = 8, height = 2.5)
+plot_grid(plot_4, plot_8,
+  align = "hv", axis = "tbrl", 
+  ncol = 2)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/01-Figure-1/cluster_data.svg")
+
+legend_grob <- cowplot::get_legend(Dot_8)
+Legend_only <- cowplot::ggdraw(legend_grob)
+
+svglite("../docs/assets/01-Figure-1/cluster_data_legend.svg", width = 8, height = 2.5)
+Legend_only
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/01-Figure-1/cluster_data_legend.svg")
+```
+
+#-----Changes in Representation------ {.tabset .tabset-pills .tabset-fade}
+## Clusters
+```{r}
+df_4 <- Tc_4@meta.data  %>%
+  dplyr::count(Tissue, celltype) %>%              # count combinations
+  group_by(Tissue) %>%                      # within each celltype
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+CD4_Percent <- ggplot(df_4, aes(x = Tissue, y = percent, fill = celltype)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  labs(y = "Percent of cells",
+       fill = "Cluster") +
+  theme_pubr(base_family = "Times") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right",
+    axis.title.x = element_blank()   # remove x-axis title
+  ) + scale_fill_manual(values = cols$celltype) & NoLegend()
+
+
+df_8 <- Tc_8@meta.data  %>%
+  dplyr::count(Tissue, celltype) %>%              # count combinations
+  group_by(Tissue) %>%                      # within each celltype
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+# Find stacked bar boundaries for Cytotoxic clusters
+cyto_boxes <- df_8 %>%
+  dplyr::filter(grepl("Cytotoxic", celltype)) %>%
+  group_by(Tissue) %>%
+  summarise(
+    ymin = sum(percent[celltype < celltype]) * 0,   # dummy placeholder
+    ymax = sum(percent),                        # total % of cytotoxic sections
+    ymin = 0,                                   # compute lower boundary correctly below
+    .groups = "drop"
+  )
+
+# Actually compute ymin and ymax properly by stacking order
+cyto_boxes <- df_8 %>%
+  group_by(Tissue) %>%
+  mutate(ymin = cumsum(percent) - percent,
+         ymax = cumsum(percent)) %>%
+  dplyr::filter(grepl("Cytotoxic", celltype)) %>%
+  summarise(
+    ymin = min(ymin),
+    ymax = max(ymax),
+    .groups = "drop"
+  )
+
+# Draw bars + boxes
+CD8_Percent <- ggplot(df_8, aes(x = Tissue, y = percent, fill = celltype)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  labs(y = "Percent of cells", fill = "Cluster") +
+  theme_pubr(base_family = "Times") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right",
+    axis.title.x = element_blank()   # remove x-axis title
+  ) +
+  scale_fill_manual(values = cols$celltype) +
+  # Add dotted red rectangles over cytotoxic ranges
+  geom_rect(
+    data = cyto_boxes,
+    aes(xmin = as.numeric(factor(Tissue)) - 0.45,
+        xmax = as.numeric(factor(Tissue)) + 0.45,
+        ymin = 100-ymin,
+        ymax = 100-ymax),
+    color = "red",
+    linewidth = 2,
+    linetype = "solid",
+    fill = NA,
+    inherit.aes = FALSE
+  ) & NoLegend()
+```
+
+#-----Global Differential Gene Expression------ {.tabset .tabset-pills .tabset-fade}
+## Plaque vs. Blood Volcano
+```{r}
+Idents(Tc) <- "PB"
+Blood_Plaque <- FindMarkers(Tc, ident.1 = "Plaque", min.pct = 0.2, logfc.threshold = 0, only.pos = F, test.use = "MAST",
+verbose = F)
+
+Blood_Plaque$gene <- rownames(Blood_Plaque)
+Blood_Plaque$Group <- ifelse(Blood_Plaque$avg_log2FC < 0, "Blood", "Plaque")
+
+keyvals <- ifelse(Blood_Plaque$avg_log2FC < -0.25 & Blood_Plaque$p_val_adj < 0.0001, "grey", ifelse(Blood_Plaque$avg_log2FC > 0.25 & Blood_Plaque$p_val_adj < 0.0001, "#D7A2FF",
+        'black'))
+keyvals[is.na(keyvals)] <- 'black'
+names(keyvals)[keyvals == '#D7A2FF'] <- 'Plaque'
+names(keyvals)[keyvals == 'black'] <- ''
+names(keyvals)[keyvals == 'grey'] <- 'Blood'
+
+PB_Vol <- EnhancedVolcano(Blood_Plaque,
+    lab = rownames(Blood_Plaque),
+    caption = "",
+    x = 'avg_log2FC',
+    y = 'p_val_adj',
+    title = "",
+    subtitle = "",
+    legendPosition = "none",
+    FCcutoff = 0.25,
+    pCutoff = 0.0001,
+    boxedLabels = T, pointSize = 1, labSize = txt_mm - 1,
+    drawConnectors = T,
+    selectLab = c("SELL", "TCF7", "LTB", "LDHB", "S1PR1", "CCL4","CXCR4", "FTH1", "LDHA", "ICOS", "CD69"),
+colCustom = keyvals) + scale_x_continuous(limits = c(-3.5, 3.5)) + scale_y_continuous(limits = c(0, 450)) +
+  theme_pubr() + 
+  NoLegend() + 
+  theme(aspect.ratio = 1,
+  text = element_text(family = "Times"),      
+  axis.text.x = element_text(size = txt_pt), 
+  axis.text.y = element_text(size = txt_pt), 
+  axis.title.x = element_text(size = txt_pt), 
+  axis.title.y = element_text(size = txt_pt),
+plot.title = element_text(hjust = 0.5, size = 0)) +
+ggtitle("Blood vs. Plaque")
+```
+
+## Unstable vs. Stable Volcano
+```{r}
+Idents(Tc) <- "Tissue"
+Unstable_vs_Stable <- FindMarkers(Tc, ident.1 = "Unstable", ident.2 = "Stable", min.pct = 0.2, logfc.threshold = 0, only.pos = F, test.use = "MAST",
+verbose = F)
+
+Unstable_vs_Stable$gene <- rownames(Unstable_vs_Stable)
+Unstable_vs_Stable$Group <- ifelse(Unstable_vs_Stable$avg_log2FC < 0, "Stable", "Unstable")
+
+keyvals <- ifelse(Unstable_vs_Stable$avg_log2FC < -0.25 & Unstable_vs_Stable$p_val_adj < 0.0001, "#00C7CC", ifelse(Unstable_vs_Stable$avg_log2FC > 0.25 & Unstable_vs_Stable$p_val_adj < 0.0001, "#FA7F74",
+        'black'))
+keyvals[is.na(keyvals)] <- 'black'
+names(keyvals)[keyvals == '#FA7F74'] <- 'Unstable'
+names(keyvals)[keyvals == 'black'] <- ''
+names(keyvals)[keyvals == '#00C7CC'] <- 'Stable'
+
+Unst_Vol <- EnhancedVolcano(Unstable_vs_Stable,
+    lab = Unstable_vs_Stable$gene,
+    caption = "",
+    x = 'avg_log2FC',
+    y = 'p_val_adj',
+    title = "",
+    subtitle = "",
+    legendPosition = "none",
+    FCcutoff = 0.25,
+    pCutoff = 0.0001,
+    boxedLabels = T, pointSize = 1, labSize = txt_mm - 1,
+    drawConnectors = T,
+    selectLab = c("GNLY", "GZMB", "GZMH", "NKG7", "ZNF683","CD69", "ICOS", "KLF2"),
+colCustom = keyvals) + scale_x_continuous(limits = c(-3, 4)) + scale_y_continuous(limits = c(0, 350)) +
+  theme_pubr() + 
+  NoLegend() + 
+  theme(aspect.ratio = 1,
+  text = element_text(family = "Times"),      
+  axis.text.x = element_text(size = txt_pt), 
+  axis.text.y = element_text(size = txt_pt), 
+  axis.title.x = element_text(size = txt_pt), 
+  axis.title.y = element_text(size = txt_pt),
+plot.title = element_text(hjust = 0.5, size = 0)) +
+  ggtitle("Stable vs. Unstable")  # Add your title here
+
+```
+
+#-----All Unique vs. Common DEGs - Top 50 Heatmap------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+# Set tissue identifier
+Idents(Tc) <- "Tissue"
+
+groups <- c("Blood", "Stable", "Unstable")
+
+Unique_vs_Common_Graph <- get_unique_and_common_degs(
+  seu          = Tc,
+  groups       = groups,
+  ident_col    = "Tissue",        # change if your column is called something else
+  unique_groups= c("Blood", "Stable", "Unstable"),
+  common_sets  = list(
+    c("Unstable", "Stable")),
+  min.pct        = 0.25,
+  logfc.threshold= 0.2,
+  pval_cutoff    = 0.05,
+  test.use       = "MAST"
+)
+```
+
+
+```{r}
+Idents(Tc) <- "Tissue"
+Tc.Avg <- AverageExpression(Tc, assays = "RNA", slot = "scale.data", return.seurat = T)
+```
+
+```{r}
+Heatmap_Genes <- Unique_vs_Common_Graph %>% group_by(cluster) %>% top_n(100, wt = avg_log2FC)
+Heatmap_Genes$Num <- rownames(Heatmap_Genes)
+
+mtx <- Tc.Avg@assays$RNA@layers$scale.data
+mtx <- as.data.frame(mtx)
+colnames(mtx) <- colnames(Tc.Avg)
+rownames(mtx) <- rownames(Tc.Avg)
+         
+        
+
+mtx_sub <-subset(mtx, rownames(mtx) %in% Heatmap_Genes$gene)
+x <- Heatmap_Genes$gene
+mtx_sub <- mtx_sub[, c(2,3,1)]
+mtx_sub <- mtx_sub %>% arrange(factor(rownames(mtx_sub), levels = x))
+
+meta <- Tc.Avg@meta.data
+meta$cluster <- rownames(meta)
+meta <- meta[c(2,3,1),]
+
+# Set up annotations for rows and clusters
+# genes you want to label
+genes_to_label <- c("TCF7", "SELL", "LEF1", "LDHB", "IL16", "S1PR1", "CD52", "KLRG1", "CD27",
+                    "ATF3", "TNFSF9", "KLRB1", "AHR", "CD28",
+                    "CXCR3", "HLA-DR", "GZMB", "TGFBR3", "GZMM", "GNLY", 
+                    "CCL4", "CXCR4", "BHLHE40", "GZMK", "RUNX3", "ICOS", "CCL5", "CD69", "GZMA", "CD96", "CD44")   # <-- edit this
+
+# find their row indices in the heatmap data
+lab_idx <- which(Heatmap_Genes$gene %in% genes_to_label)
+
+# sanity check (optional)
+Heatmap_Genes$gene[lab_idx]
+
+labels <- rowAnnotation(
+  x = anno_mark(
+    at = lab_idx,
+    labels_rot = -30,
+    labels_gp = gpar(fontsize = txt_pt, fontfamily = "Times"),
+    padding = unit(2.5, "mm"),
+    labels = Heatmap_Genes$gene[lab_idx],
+    side = "left"
+  )
+)
+
+cluster_anno <- HeatmapAnnotation(
+  cluster = meta$cluster,
+  show_annotation_name = FALSE,
+  annotation_label = FALSE,
+  annotation_name_rot = 5,
+  show_legend = FALSE,
+  annotation_legend_param = list(labels_gp = gpar(fontsize = 0)),
+  col = list(cluster = cols$Tissue[2:4])
+)
+
+# Create row annotations using HeatmapAnnotation
+right_annotation = rowAnnotation(anno = anno_block(gp = gpar(fill = cols$Tissue[2:5]),
+        labels = c("Blood Unique", "Stable Unique", "Unstable Unique", "Plaque Common"), labels_gp = gpar(col = "white", fontsize = txt_pt,fontfamily = "Times"), labels_rot = -90))
+
+# Set up heatmap colors and legend
+col_fun <- colorRamp2(c(-0.5, 0, 0.5), c("blue", "#EEEEEE", "red"))
+heatmap_legend_params <- list(
+  legend_direction = "horizontal",
+  legend_width = unit(3, "cm"),
+  labels_gp = gpar(fontsize = txt_pt,fontfamily = "Times"),
+  labels_rot = -90,
+  title = "",
+  title_gp = gpar(box_fill = "grey"),
+  at = c(-1, 0, 1)
+)
+
+# Draw heatmap
+HM <- Heatmap(
+  mtx_sub,
+  height = nrow(mtx_sub)*unit(0.5, "mm"),
+  width = ncol(mtx_sub)*unit(5, "mm"),
+  border = TRUE,
+  top_annotation = cluster_anno,
+  right_annotation = right_annotation,
+  row_names_gp = gpar(fontsize = 0),
+  left_annotation = labels,
+  col = col_fun,
+  cluster_rows = TRUE,
+  cluster_columns = FALSE,
+  show_row_dend = FALSE,
+  cluster_row_slices = FALSE,
+  show_column_names = FALSE,
+  cluster_column_slices = FALSE,
+  split = Heatmap_Genes$cluster,
+  column_names_side = NULL,
+  row_title = " ",
+  heatmap_legend_param = heatmap_legend_params)
+
+svglite("../docs/assets/01-Figure-1/Gene_Heatmap.svg", width = 3, height = 11)
+draw(HM, heatmap_legend_side = "bottom")
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/01-Figure-1/Gene_Heatmap.svg")
+```
+
+```{r}
+lgd = Legend(col_fun = col_fun, 
+             title = " ", 
+             at = c(-1, 0, 1), 
+             direction = "horizontal",
+             labels = c("low", " ", "high"),
+             grid_height = unit(5, "mm"),
+              grid_width = unit(15, "mm"),
+    labels_gp = gpar(fontsize = txt_pt,  fontfamily = "Times"))
+
+svglite("../docs/assets/01-Figure-1/HM_Legend.svg", width = 4, height = 2)
+draw(lgd, test = " ")
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/01-Figure-1/HM_Legend.svg")
+```
+
+#-----Cluster Specific Unstable vs. Stable------ {.tabset .tabset-pills .tabset-fade}
+```{r include=FALSE}
+Idents(Tc) <- "celltype"
+
+## Scale and normalise RNA check
+DefaultAssay(Tc) <- "RNA"
+
+groups <-  levels(Tc)
+
+# Store results
+deg_results <- list()
+
+for (g in groups) {
+  message("Running DEG for: ", g)
+  
+  # Subset cells of this TRDV group
+  Tc_sub <- subset(Tc, idents = g)
+  Idents(Tc_sub) <- "Tissue"   # Tissue must contain Plaque/Blood
+  
+  # Run DEG (Plaque vs Blood)
+  deg <- FindMarkers(
+    Tc_sub,
+    ident.1 = "Unstable",
+    ident.2 = "Stable",
+    min.pct = 0.2,
+    logfc.threshold = 0.25,
+    test.use = "MAST",
+    only.pos = F
+  )
+  
+  # Add cluster info and gene names
+  deg$cluster <- ifelse(deg$avg_log2FC > 0, "Unstable", "Stable")
+  deg$gene <- rownames(deg)
+  deg <- subset(deg, p_val_adj < 0.05)
+  
+  # Save to list
+  deg_results[[g]] <- deg
+}
+
+all_deg_Unst_list <- deg_results
+all_deg_Unst <- bind_rows(deg_results, .id = "celltype")
+rownames(all_deg_Unst_list) <- NULL
+deg_results <- NULL
+
+plot_levels <- lvl[-c(1,6,7,11)]
+
+counts_plot_Unst <- count_and_plot_deg_lollipop(
+  deg_list        = all_deg_Unst_list,
+  contrast_levels = c("Unstable","Stable"),
+  pval_col        = "p_val_adj",
+  lfc_col         = "avg_log2FC",
+  alpha           = 0.05,
+  lfc_thresh      = 0.25,
+  font_family = "Times",
+  txt_pt = 10,
+  pt_size = 2,
+  aspect = NULL,
+  palette = cols$Tissue
+) + theme(text = element_text(family = "Times", size = txt_pt)) + scale_y_discrete(limits = rev(plot_levels), labels = lab)
+```
+
+## Create Plots
+### Unstable vs. Stable Expression Bubble 
+```{r, fig.width=10}
+## Genes to Plot
+gene_sets <- list(
+  `Migration` = c("ITGA4", "ITGA5", "ITGB1", "LSP1", "TAGLN"),
+  differentiation = c("CD44", "HOPX", "ID2", "ZEB2", "ZNF683"),
+ `inhibitory signalling` = c("PTPRCAP", "CD5", "SLA", "SLA2", "CD6", "TNFAIP3", "NFKBIA"),
+  Metabolism = c("TXNIP", "ALDOA", "CPT1A", "TUFM"),
+  Cytotoxicity = c("GNLY", "GZMB", "GZMH", "PRF1", "KLRD1", "FGFBP2","NKG7"))
+
+deg_counts <- all_deg_Unst %>%
+  dplyr::filter(cluster == "Unstable",
+         avg_log2FC > 0.25)  %>%
+  group_by(gene) %>%
+  summarise(n_cells = n()) %>%
+  ungroup()
+
+deg_plot <- subset(all_deg_Unst, celltype %in% plot_levels)
+deg_plot$regulation <- deg_plot$cluster
+deg_plot$cluster <- NULL
+deg_plot$celltype <- factor(deg_plot$celltype, levels = rev(plot_levels))
+
+levels(deg_plot$celltype)
+
+Unstable_Dot <- seu_gene_sets_dot(
+  seu = NULL,
+  markers_df = deg_plot,
+  markers_gene_col  = "gene",
+  markers_group_col = "celltype",
+  markers_lfc_col   = "avg_log2FC",
+  markers_padj_col  = "p_val_adj",
+  gene_sets = gene_sets,
+  group_by = "celltype",
+  assay    = NULL,
+  use_scaled_for_fill = TRUE,
+  show_missing = TRUE,
+  size_range   = c(1, 12),
+  size_breaks  = c(1, 50, 100),
+  size_limits  = c(0, 40),
+  fill_limits  = c(-1.5, 1.5),
+  fill_palette = viridisLite::viridis(3),
+  x_label      = "",
+  base_size    = txt_pt,
+  x_angle      = 45,
+  x_text_size  = txt_pt,
+  y_text_size  = txt_pt,
+  x_title_size = txt_pt,
+    bracket_text_size = txt_mm,
+  bracket_tick = 0.25,
+  y_expand_add_bottom = 0.60,        # add bottom padding (lifts dots off x-axis)
+  y_expand_add_top    = 0.25,        # add top padding (reduces headroom)
+  y_bracket_offset    = 0.40,        # bracket baseline above top row (in "row" units)
+  y_label_offset      = 0.18,
+  plot_margin_cm      = c(1.2, 0.6, 0.6, 0.6),
+  cluster_groups = F,
+  cluster_genes  = "none",
+  dist_method    = "euclidean",
+  hclust_method  = "complete"
+) + theme(text = element_text(family = "Times")) + scale_y_discrete(limits = rev(lvl_plot <- lvl[-c(1,6,7,11)]
+), labels = lab) + theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal"
+  )
+
+Unstable_Dot
+
+```
+
+### Stable vs. Unstable Expression Bubble 
+```{r, fig.width=10}
+## Genes to Plot
+gene_sets <- list(
+  `Migration` = c("ITGA4", "ITGA5", "ITGB1", "LSP1", "TAGLN"),
+  differentiation = c("CD44", "HOPX", "ID2", "ZEB2", "ZNF683"),
+ `inhibitory signalling` = c("PTPRCAP", "CD5", "SLA", "SLA2", "CD6", "TNFAIP3", "NFKBIA"),
+  Metabolism = c("TXNIP", "ALDOA", "CPT1A", "TUFM"),
+  Cytotoxicity = c("GNLY", "GZMB", "GZMH", "PRF1", "KLRD1", "FGFBP2","NKG7"))
+
+deg_counts <- all_deg_Unst %>%
+  dplyr::filter(cluster == "Unstable",
+         avg_log2FC > 0.25)  %>%
+  group_by(gene) %>%
+  summarise(n_cells = n()) %>%
+  ungroup()
+
+deg_plot <- subset(all_deg_Unst, celltype %in% plot_levels)
+deg_plot$regulation <- deg_plot$cluster
+deg_plot$cluster <- NULL
+deg_plot$celltype <- factor(deg_plot$celltype, levels = rev(plot_levels))
+
+levels(deg_plot$celltype)
+
+Unstable_Dot <- seu_gene_sets_dot(
+  seu = NULL,
+  markers_df = deg_plot,
+  markers_gene_col  = "gene",
+  markers_group_col = "celltype",
+  markers_lfc_col   = "avg_log2FC",
+  markers_padj_col  = "p_val_adj",
+  gene_sets = gene_sets,
+  group_by = "celltype",
+  assay    = NULL,
+  use_scaled_for_fill = TRUE,
+  show_missing = TRUE,
+  size_range   = c(1, 12),
+  size_breaks  = c(1, 50, 100),
+  size_limits  = c(0, 40),
+  fill_limits  = c(-1.5, 1.5),
+  fill_palette = viridisLite::viridis(3),
+  x_label      = "",
+  base_size    = txt_pt,
+  x_angle      = 45,
+  x_text_size  = txt_pt,
+  y_text_size  = txt_pt,
+  x_title_size = txt_pt,
+    bracket_text_size = txt_mm,
+  bracket_tick = 0.25,
+  y_expand_add_bottom = 0.60,        # add bottom padding (lifts dots off x-axis)
+  y_expand_add_top    = 0.25,        # add top padding (reduces headroom)
+  y_bracket_offset    = 0.40,        # bracket baseline above top row (in "row" units)
+  y_label_offset      = 0.18,
+  plot_margin_cm      = c(1.2, 0.6, 0.6, 0.6),
+  cluster_groups = F,
+  cluster_genes  = "none",
+  dist_method    = "euclidean",
+  hclust_method  = "complete"
+) + theme(text = element_text(family = "Times")) + scale_y_discrete(limits = rev(lvl_plot <- lvl[-c(1,6,7,11)]
+), labels = lab) + theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal"
+  )
+
+```
+
+# Plot Organisation
+```{r}
+svglite("../docs/assets/01-Figure-1/Percent_and_Volcs.svg", width = 8, height = 3)
+plot_grid(CD4_Percent, CD8_Percent, PB_Vol, Unst_Vol,
+  align = "hv", axis = "tbrl", 
+  rel_heights = c(1,1,1,1),
+  rel_widths = c(0.5,0.5,1,1),
+  ncol = 4)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/01-Figure-1/Percent_and_Volcs.svg")
+
+Unstable_plot <- Unstable_Dot + NoLegend()
+svglite("../docs/assets/01-Figure-1/Unst.svg", width = 10, height = 3.5)
+plot_grid(counts_plot_Unst, Unstable_plot,
+  align = "hv", axis = "tbrl",
+  ncol = 2,
+  rel_widths = c(1, 2))
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/01-Figure-1/Unst.svg")
+
+legend_grob <- cowplot::get_legend(Unstable_Dot)
+Legend_only <- cowplot::ggdraw(legend_grob)
+svglite("../docs/assets/01-Figure-1/unstable_dot_legend.svg", width = 10, height = 3.5)
+Legend_only
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/01-Figure-1/unstable_dot_legend.svg")
+```
+
+# Save
+```{r}
+saveRDS(Tc,"../objects/Tc.rds")
+saveRDS(Tc_4, "../objects/Tc_4.rds")
+saveRDS(Tc_8, "../objects/Tc_8.rds")
+```
+
+
+
+

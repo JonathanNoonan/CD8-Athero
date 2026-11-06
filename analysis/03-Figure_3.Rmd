@@ -1,0 +1,1055 @@
+---
+title: "Figure 3"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
+site: workflowr::wflow_site
+output:
+  workflowr::wflow_html:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Setup {.tabset .tabset-pills}
+## Load the libraries
+```{r message=FALSE, warning=FALSE}
+## Package Management
+set.seed(01122023)
+suppressPackageStartupMessages({
+## Key
+library(Seurat)
+library(scRepertoire)
+library(MAST)
+library(ProjecTILs)
+
+## Wrangling
+library(stringr)
+library(tidyr)
+library(dplyr)
+library(nichenetr)
+
+## Visualization
+library(pals)
+library(DT)
+library(ggplot2)
+library(ggpubr)
+library(ggtext)
+library(RColorBrewer)
+library(circlize)
+library(ComplexHeatmap)
+library(plot1cell)
+library(ggvenn)
+library(ggalluvial)
+library(stringr)
+library(readr)
+library(gridExtra)
+library(tibble)
+library(enrichR)
+library(EnhancedVolcano)
+library(openxlsx)
+library(svglite)
+library(grid)
+})
+```
+
+## Load Data
+```{r}
+Tc <- readRDS("../objects/Tc.rds")
+Tc_8 <- readRDS("../objects/Tc_8.rds")
+```
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = F, message = F, dpi = 300)
+functions <- list.files("../code/", pattern = "\\.R$", full.names = TRUE)
+invisible(lapply(functions, source))
+```
+
+## Set up output directories
+```{r}
+dir.create("../docs/assets/03-Figure-3")
+```
+## Design Elements
+```{r}
+# Create vector colors
+cols <- readRDS("../docs/assets/00-DesignElements/DesignElements.rds")
+```
+
+## Define Gene Sets
+```{r}
+Gene_Sets <- list()
+# Utzschneider NAture Immunology 2020
+xl <- read.xlsx("../data/reference_data/Utzschneider_NatImmunology_2020.xlsx", sheet = 5, startRow = 2)
+Gene_Sets[["TEX_Utzschneider_2020"]] <- as.vector(na.omit(convert_mouse_to_human_symbols(xl$Symbol)))
+
+Gene_Sets[["TCR_Elliot_2021"]] <- as.vector(na.omit(convert_mouse_to_human_symbols(c("Nr4a1", "Nr4a2", "Nr4a3", "Cd69", "Tnf", "Irf4", "Irf8", "Egr2", "Tnfsf4", "Il2", "Il2ra", "Cd40lg", "Pdcd1", "Tbx21", "Ifng", "Gzmb", "Il12rb2", "Malt1", "Mt1", "Mt2", "Il21", "Rora", "Rorc", "Ctla4", "Icos", "Maf", "Il10", "Nfil3", "Tigit", "Lag3", "Cd3g", "Cd3e", "Lck", "Rasgrp1", "Gata3", "Bhlhe40", "Eomes", "Runx3"))))
+
+# Step 1: Find overlapping genes between any two of the lists
+overlap_Bending_Kallies <- intersect(Gene_Sets$TCR_Elliot_2021, Gene_Sets$TEX_Utzschneider_2020)
+
+# Step 2: Remove overlapping genes from each list
+Gene_Sets[["TEX_Utzschneider_2020_unique"]] <- setdiff(Gene_Sets$TCR_Elliot_2021, overlap_Bending_Kallies)
+Gene_Sets[["TCR_Elliot_2021_unique"]] <- setdiff(Gene_Sets$TEX_Utzschneider_2020, overlap_Bending_Kallies)
+```
+
+## Text base
+```{r}
+pt_to_mm <- function(pt) pt / 2.95
+txt_pt <- 10
+txt_mm <- txt_pt / 2.95
+cex_base <- txt_pt / 12
+```
+
+## label levels
+```{r}
+lvl_4 <- c(
+  "CD4 TN",
+  "CD4 TSM",
+  "CD4 THDM",
+  "CD4 TH1DM",
+  "CD4 TCTLDM",
+  "CD4 Regulatory",
+  "CD4 Proliferating")
+
+lab_4 <- c(
+  "CD4 TN"            = expression("CD4 TN"),
+  "CD4 TSM"           = expression("CD4 TSM"),
+  "CD4 THDM"          = expression("CD4 " * T[H] * DM),
+  "CD4 TH1DM"         = expression("CD4 " * T[H1] * DM),
+  "CD4 TCTLDM"        = expression("CD4 " * T[CTL] * DM),
+  "CD4 Regulatory"    = expression("CD4 " * T[reg]),
+  "CD4 Proliferating" = expression("CD4 Proliferating"))
+
+
+lvl_8 <- c(
+  "CD8 TN",
+  "CD8 TM",
+  "CD8 Tc1DM",
+  "CD8 TCTLDM",
+  "CD8 Tc1-CTLDM",
+  "CD8 Proliferating"
+)
+
+lab_8 <- c(
+  "CD8 TN"              = expression("CD8 TN"),
+  "CD8 TM"             = expression("CD8 TM"),
+  "CD8 Tc1DM"           = expression("CD8 " * T[c1] * DM),
+  "CD8 TCTLDM"           = expression("CD8 " * T[CTL] * DM),
+  "CD8 Tc1-CTLDM"       = expression("CD8 " * T[c1*"-"*CTL] * DM),
+  "CD8 Proliferating"   = expression("CD8 Proliferating")
+)
+
+lvl <- c(
+  "CD4 TN",
+  "CD4 TSM",
+  "CD4 THDM",
+  "CD4 TH1DM",
+  "CD4 TCTLDM",
+  "CD4 Regulatory",
+  "CD8 TN",
+  "CD8 TM",
+  "CD8 Tc1DM",
+  "CD8 TCTLDM",
+  "CD8 Tc1-CTLDM")
+
+lab <- c(
+  "CD4 TN"            = expression("CD4 TN"),
+  "CD4 TSM"           = expression("CD4 TSM"),
+  "CD4 THDM"          = expression("CD4 " * T[H] * DM),
+  "CD4 TH1DM"         = expression("CD4 " * T[H1] * DM),
+  "CD4 TCTLDM"        = expression("CD4 " * T[CTL] * DM),
+  "CD4 Regulatory"    = expression("CD4 " * T[reg]),
+  "CD8 TN"              = expression("CD8 TN"),
+  "CD8 TM"             = expression("CD8 TM"),
+  "CD8 Tc1DM"           = expression("CD8 " * T[c1] * DM),
+  "CD8 TCTLDM"           = expression("CD8 " * T[CTL] * DM),
+  "CD8 Tc1-CTLDM"       = expression("CD8 " * T[c1*"-"*CTL] * DM)
+)
+
+```
+
+#-----Annotate of TEX ------ {.tabset .tabset-pills .tabset-fade}
+## Reference Map
+```{r}
+CD8_ref <- load.reference.map(ref = "../data/PTIL_refs/CD8T_human_ref_v1.rds")
+
+library(Seurat)
+library(ProjecTILs)
+
+# Prepare a copy; retain the original Tc_8 object
+CD8 <- Tc_8
+
+DefaultAssay(CD8) <- "RNA"
+
+CD8@assays$SCT <- NULL
+
+# Preserve projection by sample
+CD8 <- Run.ProjecTILs(
+  query = Tc_8_project,
+  ref = CD8_ref,
+  ndim = 10,
+  split.by = "orig.ident",
+  reduction = "pca",
+  filter.cells = FALSE
+)
+
+table(CD8$functional.cluster)
+```
+
+```{r}
+order <- c("CD8.NaiveLike", "CD8.CM", "CD8.EM", "CD8.TEMRA","CD8.TEX","CD8.TPEX", "CD8.MAIT")
+
+Tc_8$functional.cluster <- CD8$functional.cluster
+Tc_8$functional.cluster <- factor(Tc_8$functional.cluster, levels = order)
+levels(factor(Tc_8$functional.cluster))
+Idents(Tc_8) <- "functional.cluster"
+
+
+Tc_8$Check <- "Check"
+table(Tc_8$Check)
+table(Tc_8$functional.cluster)
+
+Tc_8@meta.data <- Tc_8@meta.data %>%
+mutate(TEX_ref = ifelse(grepl("EX", functional.cluster), "TX", "Other"))
+
+table(Tc_8$Check)
+table(Tc_8$TEX_ref)
+
+
+Tc_8@meta.data <- Tc_8@meta.data %>%
+  mutate(
+    TEX_ref_full = ifelse(
+      grepl("EX", as.character(functional.cluster)),
+      "CD8.TX",
+      as.character(functional.cluster)
+    )
+  )
+
+table(Tc_8$Check)
+table(Tc_8$TEX_ref_full)
+
+Tc_8$TEX_ref_full <- factor(Tc_8$TEX_ref_full, levels = c("CD8.NaiveLike", "CD8.CM", "CD8.EM", "CD8.TEMRA",  "CD8.MAIT" , "CD8.TX" ))
+```
+
+## Manual
+```{r}
+DefaultAssay(Tc_8) <- "RNA"
+
+genes <- c("TOX", "ICOS", "PDCD1", "TIGIT", "HAVCR2", "ICOS", "LAG3", "IRF4")
+thr   <- 0.5
+
+genes_present <- intersect(genes, rownames(Tc_8))
+if (!"TOX" %in% genes_present) stop("TOX not found in Tc_8")
+
+expr <- GetAssayData(Tc_8, assay = "RNA", slot = "scale.data")[genes_present, , drop = FALSE]
+
+tox_expr <- expr["TOX", ]
+other_genes <- setdiff(genes_present, "TOX")
+
+other_count <- colSums(expr[other_genes, , drop = FALSE] > thr)
+
+# Cells: TOX > thr AND at least 2 of the others > thr
+sel <- tox_expr > thr & other_count >= 3
+
+Tex_cells <- colnames(Tc_8)[sel]
+
+# Add to metadata
+Tc_8$TEX <- ifelse(colnames(Tc_8) %in% Tex_cells, "TX", "Other")
+
+Tc_8@meta.data <- Tc_8@meta.data %>%
+  mutate(
+    TEX_full = ifelse(
+      colnames(Tc_8) %in% Tex_cells, "CD8 TX",
+      as.character(celltype)
+    )
+  )
+```
+
+#-----Exhaustion Evidence in CD4 vs. CD8------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+CD4_8_Vln <- VlnPlot(Tc, features = "TOX", sort = F, pt.size = 0.0, cols = c("darkgreen", "darkred"), split.by = "CD4_8", adjust = 2.5) +
+  theme_pubr() + 
+  xlab("") + 
+  NoLegend() + 
+  theme(
+    text = element_text(family = "Times"),
+    axis.text.x = element_text(size = txt_pt), 
+    axis.text.y = element_text(size = txt_pt), 
+    axis.title.x = element_text(size = txt_pt), 
+    axis.title.y = element_text(size = txt_pt),
+plot.title = element_text(hjust = 0.5, size = txt_pt)) +
+ggtitle("TOX") & coord_flip()
+
+svglite("../docs/assets/03-Figure-3/CD4_8Tox_Expression.svg", width =3., height = 3)
+CD4_8_Vln
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/03-Figure-3/CD4_8Tox_Expression.svg")
+```
+
+#----- Heatmaps of TEX Genes ------ {.tabset .tabset-pills .tabset-fade}
+## Reference mapped data
+```{r}
+sc.Avg <- AverageExpression(Tc_8, assays = "RNA", slot = "scale.data", return.seurat = T, group.by = "TEX_ref_full")
+
+Heatmap_Genes <- c("SELL","TCF7","CD44","CD69", "CCL5", "GZMB","GNLY", "TRAV1-2", "TOX","PDCD1","LAG3","IRF4","ICOS")
+mtx <- sc.Avg@assays$RNA@layers$scale.data |> as.data.frame()
+rownames(mtx) <- rownames(sc.Avg@assays$RNA)
+colnames(mtx) <- colnames(sc.Avg@assays$RNA)
+
+gene_col <- "gene"
+
+x <- Heatmap_Genes
+mtx_sub <- subset(mtx, rownames(mtx) %in% x)
+mtx_sub <- mtx_sub %>% arrange(factor(rownames(mtx_sub), levels = x))
+
+order <- rownames(sc.Avg@meta.data)
+order_rev <- order
+
+mtx_sub <- mtx_sub[, match(order_rev, colnames(mtx_sub)), drop = FALSE]
+
+meta <- sc.Avg@meta.data[order_rev, , drop = FALSE]
+meta$cluster <- rownames(meta)
+
+cluster_anno <- HeatmapAnnotation(
+  cluster = meta$cluster,
+  show_annotation_name = FALSE,
+  annotation_label = FALSE,
+  annotation_name_rot = 5,
+  show_legend = FALSE,
+  annotation_legend_param = list(labels_gp = gpar(fontsize = 0)),
+  col = list(cluster = cols$PTILs[levels(factor(meta$cluster))])
+)
+
+col_fun <- colorRamp2(c(-0.5, 0, 0.5), c("black", "#21918c", "#fde725"))
+heatmap_legend_params <- list(
+  legend_direction = "horizontal",
+  legend_position = "center",
+  legend_width = unit(3, "cm"),
+  labels_gp = gpar(fontsize = 10),
+  labels_rot = 0,
+  title = "",
+  title_gp = gpar(box_fill = "grey"),
+  at = c(-1, 0, 1)
+)
+
+hm <- Heatmap(
+  mtx_sub,
+  height = nrow(mtx_sub) * unit(5, "mm"),
+  width  = ncol(mtx_sub) * unit(5, "mm"),   # slightly slimmer columns for landscape
+  border = TRUE,
+  top_annotation = cluster_anno,
+  row_names_gp = gpar(fontsize = 10),
+  row_names_side = "left",
+  col = col_fun,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  show_row_dend = FALSE,
+  cluster_row_slices = FALSE,
+  show_column_names = FALSE,
+  cluster_column_slices = FALSE,
+  column_names_side = NULL,
+  row_title = " ",
+  column_title = "",
+  heatmap_legend_param = heatmap_legend_params
+)
+
+svglite("../docs/assets/03-Figure-3/TX_HM_ref.svg", width = 4, height = 4)  # landscape
+draw(hm, heatmap_legend_side = "bottom")
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/03-Figure-3/TX_HM_ref.svg")
+```
+
+## Clusters split by TEX
+```{r}
+Idents(Tc_8) <- "celltype"
+
+sc.Avg <- AverageExpression(subset(Tc_8, !c(celltype %in% c("CD8 TN"))), assays = "RNA", slot = "scale.data", return.seurat = T, group.by = c("celltype","TEX"))
+```
+
+```{r}
+Heatmap_Genes <- c("CD44","CD69", "CCL5", "GZMB","GNLY", "TOX","PDCD1","LAG3","IRF4","ICOS", "TIGIT", "HAVCR2")
+
+# Expression matrix from sc.Avg
+mtx <- sc.Avg@assays$RNA@layers$scale.data |> as.data.frame()
+rownames(mtx) <- rownames(sc.Avg@assays$RNA)
+colnames(mtx) <- colnames(sc.Avg@assays$RNA)
+
+mtx_sub <- mtx[rownames(mtx) %in% Heatmap_Genes, , drop = FALSE]
+mtx_sub <- mtx_sub[match(Heatmap_Genes, rownames(mtx_sub)), , drop = FALSE]  # preserve gene order
+
+# Meta for columns + FORCE celltype ordering
+
+# 1) desired order from Seurat object
+celltype_levels <- rev(levels(Tc_8$celltype))  # or: levels(Idents(Tc_8)) if that's what you use
+
+# 2) meta for heatmap columns
+meta <- sc.Avg@meta.data[colnames(mtx_sub), , drop = FALSE]
+meta$celltype <- as.character(meta$celltype)
+
+# 3) apply Tc_8 ordering (keep only levels that actually appear in meta)
+celltype_levels_use <- celltype_levels[celltype_levels %in% unique(meta$celltype)]
+meta$celltype <- factor(meta$celltype, levels = celltype_levels_use)
+
+# (optional but recommended) if anything didn't match, it becomes NA
+stopifnot(!any(is.na(meta$celltype)))
+
+# Ensure TEX labels are consistent (Other vs TX)
+
+# If your meta already has TEX, just standardise its labels.
+# This assumes meta$TEX exists and is either "Other"/"TEX" or "Other"/"TX".
+meta$TEX <- as.character(meta$TEX)
+meta$TEX <- ifelse(meta$TEX %in% c("TX", "TEX"), "TX", "Other")
+meta$TEX <- factor(meta$TEX, levels = c("TX", "Other"))
+
+
+# Order columns: Other first, then TX; within each, by celltype (Tc_8 order)
+ord <- with(meta, order(TEX, celltype))
+mtx_sub <- mtx_sub[, ord, drop = FALSE]
+meta    <- meta[ord, , drop = FALSE]
+
+# Colours
+tex_cols <- c("Other" = "grey85", "TX" = "#e812dd")
+
+# cols$celltype must be a NAMED vector: names are celltype labels, values are colours
+celltype_cols <- cols$celltype[celltype_levels_use]
+stopifnot(!any(is.na(celltype_cols)))  # catches missing names in cols$celltype
+
+top_anno <- HeatmapAnnotation(
+  TEX      = meta$TEX,
+  celltype = meta$celltype,
+  col = list(
+    TEX      = tex_cols,
+    celltype = celltype_cols
+  ),
+  show_annotation_name = FALSE,
+  annotation_height = unit(c(3, 3), "mm")
+)
+
+col_fun <- colorRamp2(c(-1, 0, 1), c("black", "#21918c", "#fde725"))
+heatmap_legend_params <- list(
+  legend_direction = "horizontal",
+  legend_position = "center",
+  legend_width = unit(3, "cm"),
+  labels_gp = gpar(fontsize = 10),
+  labels_rot = 270,
+  title = "",
+  title_gp = gpar(box_fill = "grey"),
+  at = c(-1, 0, 1)
+)
+
+hm <- Heatmap(
+  mtx_sub,
+  height = nrow(mtx_sub) * unit(5, "mm"),
+  width  = ncol(mtx_sub) * unit(5, "mm"), 
+  col = col_fun,
+  border = TRUE,
+  show_row_names = TRUE,
+  row_names_gp = gpar(fontsize = 10, fontfamily = "Times"),
+  row_names_rot = -45,
+  row_names_side = "left",
+  top_annotation = top_anno,
+  column_split = meta$TEX,
+  cluster_column_slices = FALSE,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  show_column_names = FALSE,
+  show_row_dend = FALSE,
+  heatmap_legend_param = heatmap_legend_params
+)
+
+svglite::svglite("../docs/assets/03-Figure-3/TEX_by_celltype_HM.svg", width = 5, height = 5)
+draw(hm, heatmap_legend_side = "bottom")
+dev.off()
+knitr::include_graphics("../docs/assets/03-Figure-3/TEX_by_celltype_HM.svg")
+```
+
+## TEX as an independent group.
+```{r}
+
+table(Tc_8$TEX_full)
+Tc_8$TEX_full <- factor(Tc_8$TEX_full, levels = c("CD8 TN", "CD8 TM","CD8 Tc1DM", "CD8 TCTLDM", "CD8 Tc1-CTLDM", "CD8 TX"))
+
+sc.Avg <- AverageExpression(Tc_8, assays = "RNA", slot = "scale.data", return.seurat = T, group.by = "TEX_full")
+
+
+Heatmap_Genes <- c("SELL", "TCF7", "CD44","CD69", "CCL5", "GZMB","GNLY", "TOX","PDCD1","LAG3","IRF4","ICOS", "TIGIT", "HAVCR2")
+
+# --- Define the desired order ---
+tex_lvls <- c("CD8 TN", "CD8 TM", "CD8 Tc1DM", "CD8 TCTLDM",
+              "CD8 Tc1-CTLDM", "CD8 TX")
+
+# --- Enforce factor levels in meta.data ---
+sc.Avg$TEX_full <- factor(sc.Avg$TEX_full, levels = tex_lvls)
+
+# --- Reorder the *columns* (pseudo-cells) of sc.Avg to match factor levels ---
+# (This is the key step that fixes column ordering everywhere downstream.)
+sc.Avg <- sc.Avg[, tex_lvls, drop = FALSE]
+
+mtx <- sc.Avg@assays$RNA@layers$scale.data |> as.data.frame()
+
+# Ensure row/colnames are correct (often already are, but keep defensive)
+rownames(mtx) <- rownames(sc.Avg@assays$RNA)
+colnames(mtx) <- colnames(sc.Avg)
+
+x <- Heatmap_Genes
+mtx_sub <- mtx[rownames(mtx) %in% x, , drop = FALSE]
+mtx_sub <- mtx_sub %>% dplyr::arrange(factor(rownames(mtx_sub), levels = x))
+
+# meta in the same order as columns (already ordered by tex_lvls)
+meta <- sc.Avg@meta.data[colnames(sc.Avg), , drop = FALSE]
+meta$cluster <- as.character(meta$TEX_full)   # use TEX_full, not rownames(meta)
+
+# Build a named colour vector in the same order
+cluster_cols <- cols$CD8_withTX[tex_lvls]
+names(cluster_cols) <- tex_lvls
+
+cluster_anno <- HeatmapAnnotation(
+  cluster = meta$cluster,
+  show_annotation_name = FALSE,
+  annotation_label = FALSE,
+  show_legend = FALSE,
+  col = list(cluster = cluster_cols)
+)
+
+col_fun <- colorRamp2(c(-1, 0, 1), c("black", "#21918c", "#fde725"))
+```
+
+
+```{r}
+heatmap_legend_params <- list(
+  legend_direction = "horizontal",
+  legend_position = "center",
+  legend_width = unit(3, "cm"),
+  labels_gp = gpar(fontsize = 10),
+  labels_rot = 0,
+  title = "",
+  title_gp = gpar(box_fill = "grey"),
+  at = c(-1, 0, 1)
+)
+
+hm <- Heatmap(
+  mtx_sub,
+  height = nrow(mtx_sub) * unit(5, "mm"),
+  width  = ncol(mtx_sub) * unit(5, "mm"), 
+  col = col_fun,
+  border = TRUE,
+  show_row_names = TRUE,
+  row_names_gp = gpar(fontsize = 10, fontfamily = "Times"),
+  row_names_side = "left",
+  top_annotation = cluster_anno,
+  cluster_column_slices = FALSE,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  show_column_names = F,
+  show_row_dend = FALSE,
+  heatmap_legend_param = heatmap_legend_params
+)
+
+
+svglite("../docs/assets/03-Figure-3/TX_HM_Manual.svg", width = 4, height = 4)  # landscape
+draw(hm, heatmap_legend_side = "bottom")
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/03-Figure-3/TX_HM_Manual.svg")
+```
+
+#----- UMAP of Manual TEX ------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+# Extract UMAP coordinates and metadata
+umap_df <- as.data.frame(Embeddings(Tc_8, "umap"))
+umap_df$cell      <- rownames(umap_df)
+umap_df$highlight <- Tc_8$TEX
+
+library(ggtext)
+library(ggplot2)
+
+Tex_fplot <- ggplot(umap_df, aes(x = UMAP_1, y = UMAP_2)) +
+  geom_point(
+    data = subset(umap_df, highlight == "Other"),
+    color = "lightgrey",
+    size  = 1.5
+  ) +
+  geom_point(
+    data = subset(umap_df, highlight == "TX"),
+    aes(fill = highlight),
+    shape = 21,
+    size  = 1,
+    stroke = 0.3,
+    color = "black"
+  ) +
+  scale_fill_manual(values = c("TX" = "#e812dd")) +
+  theme_void() +
+  ggtitle("TX") +
+  theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    plot.title = element_markdown(
+      size   = 12,
+      hjust  = 0.5,
+      face   = "bold",
+      color  = "#e812dd",
+      margin = margin(b = 10),
+      lineheight = 5
+    ),
+    legend.position = "none"
+  )
+
+svglite("../docs/assets/03-Figure-3/TEX_fplot.svg", width = 2, height = 2)
+print(Tex_fplot)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/03-Figure-3/TEX_fplot.svg")
+```
+
+#----- UMAP of Mapped TEX ------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+# Extract UMAP coordinates and metadata
+umap_df <- as.data.frame(Embeddings(Tc_8, "umap"))
+umap_df$cell      <- rownames(umap_df)
+umap_df$highlight <- Tc_8$TEX_ref
+
+library(ggplot2)
+
+Tex_fplot <- ggplot(umap_df, aes(x = UMAP_1, y = UMAP_2)) +
+  geom_point(
+    data = subset(umap_df, highlight == "Other"),
+    color = "lightgrey",
+    size  = 1.5
+  ) +
+  geom_point(
+    data = subset(umap_df, highlight == "TX"),
+    aes(fill = highlight),
+    shape = 21,
+    size  = 1,
+    stroke = 0.3,
+    color = "black"
+  ) +
+  scale_fill_manual(values = c("TX" = "#e812dd")) +
+  theme_void() +
+  ggtitle("TX") +
+  theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    plot.title = element_markdown(
+      size   = 12,
+      hjust  = 0.5,
+      face   = "bold",
+      color  = "#e812dd",
+      margin = margin(b = 10),
+      lineheight = 5
+    ),
+    legend.position = "none"
+  )
+
+svglite("../docs/assets/03-Figure-3/TEX_fplot_ref.svg", width = 2, height = 2)
+print(Tex_fplot)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/03-Figure-3/TEX_fplot_ref.svg")
+```
+
+#----- Representation of TEX Per Cluster - Ref ------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+df <- subset(Tc_8, TEX_ref == "TX")@meta.data   %>%
+  dplyr::count(celltype, TEX_ref) %>%              # count combinations
+  group_by(TEX_ref) %>%                      # within each TEX
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+TEX_per_cluster_ref <- ggplot(df, aes(x = celltype, y = percent, fill = TEX_ref)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  scale_fill_manual(values = c("TX" = "#e812dd", "Other" = "lightgrey")) +
+  labs(y = "Percent Exhausted") +
+  theme_pubr(base_family = "Times", base_size = txt_pt) +
+  theme(
+    aspect.ratio = 1,
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.position = "none",
+    axis.title.x = element_blank()
+  ) +
+  ylim(c(0, 50)) + scale_x_discrete(limits = lvl_8, labels = lab_8)
+
+svglite("../docs/assets/03-Figure-3/TEX_per_cluster_ref.svg", width =2, height = 3)
+TEX_per_cluster_ref
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/03-Figure-3/TEX_per_cluster_ref.svg")
+```
+
+```{r}
+svglite("../docs/assets/03-Figure-3/Exh_Combined.svg", width = 5, height = 2.5)
+plot_grid(CD4_8_Vln, TEX_per_cluster_ref,
+  align = "hv", axis = "tbrl", 
+  rel_widths = c(0.6,1),
+  ncol = 2)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/03-Figure-3/Exh_Combined.svg")
+```
+
+#-----TEX Proportion in Plaque vs. Blood------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+## Manual
+# Build a clean metadata df
+Exh_PID <- data.frame(
+  Tissue    = Tc_8$PB,
+  Patient   = Tc_8$PID,
+  Exhausted = Tc_8$TEX
+)
+
+# Calculate % exhausted (TEX) per Patient × Tissue
+exhausted_pct <- Exh_PID %>%
+  dplyr::filter(!is.na(Exhausted)) %>%              # optional: drop NAs
+  group_by(Patient, Tissue) %>%
+  summarise(
+    Freq    = sum(Exhausted == "TX"),       # number of TEX cells
+    Total   = n(),                           # total cells for that Patient × Tissue
+    Percent = 100 * Freq / Total,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Exhausted     = "TX",
+    Patient_Group = paste(Patient, Tissue)
+  ) %>%
+  dplyr::select(Patient, Tissue, Patient_Group, Exhausted, Freq, Percent)
+
+write.csv(
+  exhausted_pct,
+  file = "../docs/assets/03-Figure-3/Percentages_Exhausted_PB.csv",
+  row.names = FALSE
+)
+
+# Reference Mapped
+Exh_PID <- data.frame(
+  Tissue    = Tc_8$PB,
+  Patient   = Tc_8$PID,
+  Exhausted = Tc_8$TEX_ref
+)
+
+exhausted_pct <- Exh_PID %>%
+  dplyr::filter(!is.na(Exhausted)) %>%            
+  group_by(Patient, Tissue) %>%
+  summarise(
+    Freq    = sum(Exhausted == "TX"),       
+    Total   = n(),                          
+    Percent = 100 * Freq / Total,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Exhausted     = "TX",
+    Patient_Group = paste(Patient, Tissue)
+  ) %>%
+  dplyr::select(Patient, Tissue, Patient_Group, Exhausted, Freq, Percent)
+
+write.csv(
+  exhausted_pct,
+  file = "../docs/assets/03-Figure-3/Percentages_Exhausted_PB_referencemapped.csv",
+  row.names = FALSE
+)
+
+```
+
+
+
+
+
+#-----TEX Proportion in Tissue------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+## Manual
+# Build a clean metadata df
+Exh_PID <- data.frame(
+  Tissue    = Tc_8$Tissue,
+  Patient   = Tc_8$PID,
+  Exhausted = Tc_8$TEX
+)
+
+# Calculate % exhausted (TEX) per Patient × Tissue
+exhausted_pct <- Exh_PID %>%
+  dplyr::filter(!is.na(Exhausted)) %>%              # optional: drop NAs
+  group_by(Patient, Tissue) %>%
+  summarise(
+    Freq    = sum(Exhausted == "TX"),       # number of TEX cells
+    Total   = n(),                           # total cells for that Patient × Tissue
+    Percent = 100 * Freq / Total,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Exhausted     = "TEX",
+    Patient_Group = paste(Patient, Tissue)
+  ) %>%
+  dplyr::select(Patient, Tissue, Patient_Group, Exhausted, Freq, Percent)
+
+write.csv(
+  exhausted_pct,
+  file = "../docs/assets/03-Figure-3/Percentages_Exhausted_Tissue.csv",
+  row.names = FALSE
+)
+
+# Reference Mapped
+# Build a clean metadata df
+Exh_PID <- data.frame(
+  Tissue    = Tc_8$Tissue,
+  Patient   = Tc_8$PID,
+  Exhausted = Tc_8$TEX_ref
+)
+
+# Calculate % exhausted (TEX) per Patient × Tissue
+exhausted_pct <- Exh_PID %>%
+  dplyr::filter(!is.na(Exhausted)) %>%              # optional: drop NAs
+  group_by(Patient, Tissue) %>%
+  summarise(
+    Freq    = sum(Exhausted == "TX"),       # number of TEX cells
+    Total   = n(),                           # total cells for that Patient × Tissue
+    Percent = 100 * Freq / Total,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Exhausted     = "TX",
+    Patient_Group = paste(Patient, Tissue)
+  ) %>%
+  dplyr::select(Patient, Tissue, Patient_Group, Exhausted, Freq, Percent)
+
+write.csv(
+  exhausted_pct,
+  file = "../docs/assets/03-Figure-3/Percentages_Exhausted_Tissue_referencemapped.csv",
+  row.names = FALSE
+)
+```
+
+```{r}
+# Rebuttal TOX
+# Build a clean metadata df
+Exh_PID <- data.frame(
+  Tissue    = Tc_8$PB,
+  Patient   = Tc_8$PID,
+  Exhausted = Tc_8$TEX_PDCD1
+)
+
+# Calculate % exhausted (TEX) per Patient × Tissue
+exhausted_pct <- Exh_PID %>%
+  dplyr::filter(!is.na(Exhausted)) %>%              # optional: drop NAs
+  group_by(Patient, Tissue) %>%
+  summarise(
+    Freq    = sum(Exhausted == "TX"),       # number of TEX cells
+    Total   = n(),                           # total cells for that Patient × Tissue
+    Percent = 100 * Freq / Total,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Exhausted     = "TX",
+    Patient_Group = paste(Patient, Tissue)
+  ) %>%
+  dplyr::select(Patient, Tissue, Patient_Group, Exhausted, Freq, Percent)
+
+write.csv(
+  exhausted_pct,
+  file = "../docs/assets/03-Figure-3/Percentages_Exhausted_Tissue_PD1.csv",
+  row.names = FALSE
+)
+```
+
+#-----Unstable vs Stable DEG------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+Idents(Tc_8) <- "Tissue"
+
+unstable_vs_stable <- FindMarkers(subset(Tc_8, celltype != "CD8 TN"), ident.1 = "Unstable", ident.2 = "Stable", min.pct = 0.2, logfc.threshold = 0, only.pos = F, test.use = "MAST", verbose = F)
+
+unstable_vs_stable$gene <- rownames(unstable_vs_stable)
+unstable_vs_stable$Group <- ifelse(unstable_vs_stable$avg_log2FC < 0, "Stable", "Unstable")
+
+unstable_vs_stable_sig <- subset(unstable_vs_stable, p_val_adj < 0.05)
+
+#unstable_vs_stable_sig$Group <- NULL
+```
+
+
+```{r}
+#### Table Export ####
+save_supp_table(
+  wb_path    = "../docs/assets/Tables/SupplementaryTables.xlsx",
+  table_number = 4,
+  data         = unstable_vs_stable_sig,
+  title        = "TITLE: Genes differentially expressed in CD8 T cells from unstable versus stable human plaque",
+  description  = "DESCRIPTION: Genes upregulated in unstable versus stable plaque CD8 T cells from human carotid endarterectomy samples. CD8 TN were excluded from this analysis"
+)
+```
+
+```{r}
+Ex_genes <- unstable_vs_stable_sig[unstable_vs_stable_sig$gene %in% Gene_Sets$TEX_Utzschneider_2020, ]
+Ex_genes <- subset(Ex_genes, Group == "Stable" & avg_log2FC < -0.3)
+
+keyvals <- ifelse(unstable_vs_stable$avg_log2FC < -0.25 & unstable_vs_stable$p_val_adj < 0.05, "#00C7CC", ifelse(unstable_vs_stable$avg_log2FC > 0.25 & unstable_vs_stable$p_val_adj < 0.05, "#FA7F74",
+        'black'))
+keyvals[is.na(keyvals)] <- 'black'
+names(keyvals)[keyvals == '#FA7F74'] <- 'Unstable'
+names(keyvals)[keyvals == 'black'] <- ''
+names(keyvals)[keyvals == '#00C7CC'] <- 'Stable'
+
+
+Volc <- EnhancedVolcano(unstable_vs_stable,
+    lab = unstable_vs_stable$gene,
+    caption = "",
+    x = 'avg_log2FC',
+    y = 'p_val_adj',
+    title = "",
+    subtitle = "",
+    legendPosition = "none",
+    FCcutoff = 0.25,
+    pCutoff = 0.0001,
+    boxedLabels = T, pointSize = 1, labSize = txt_mm - 1,
+    drawConnectors = T,
+    selectLab = c("TOX", "ICOS", "RGCC", "KLRB1", "EGR1", "DNAJB4", "GPR183", "GNLY", "FGFBP2", "GZMB", "HOPX", "PRF1"),
+colCustom = keyvals) + scale_x_continuous(limits = c(-2, 2.5)) + scale_y_continuous(limits = c(0, 250)) +
+  theme_pubr() + 
+  NoLegend() + 
+  theme(aspect.ratio = 1,
+  text = element_text(family = "Times"),      
+  axis.text.x = element_text(size = txt_pt), 
+  axis.text.y = element_text(size = txt_pt), 
+  axis.title.x = element_text(size = txt_pt), 
+  axis.title.y = element_text(size = txt_pt),
+plot.title = element_text(hjust = 0.5, size = 0)) +
+  ggtitle("Stable vs. Unstable")  # Add 
+
+svglite("../docs/assets/03-Figure-3/Volcs.svg", width = 4, height = 4)
+Volc
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/03-Figure-3/Volcs.svg")
+```
+ 
+  ggtitle("Stable vs. Unstable") + 
+  geom_label(
+    data = tox_row,
+    aes(x = avg_log2FC, y = -log10(p_val_adj), label = "TOX"),
+    color = "red",
+    fill = "white",
+    fontface = "bold",
+    size = 6,
+    label.size = 0.3
+  )
+  
+#-----TEX Signature Scoring------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+Idents(Tc_8) <- "Tissue"
+plot <- subset(Tc_8,Tissue != "Blood" & celltype != "Naïve-Like CD8")
+plot$Tissue <- factor(plot$Tissue, levels = c("Stable", "Unstable"))
+Idents(plot) <- "Tissue"
+
+Exh_Vln <- VlnPlot(plot, "TEX_Utzschneider_2020_UCell", fill.by = "ident", cols = c("#00C7CC", "#FA7F74"), pt.size = 0) + geom_boxplot(width=0.1, outliers = F) + NoLegend() + ylab("Utzschneider 2020 \n Exhaustion UCell Score") + labs(
+    title = "Exhaustion Signature") + theme(
+    aspect.ratio = 2,
+    text = element_text(family = "Times"),
+    axis.text.x = element_text(size = txt_pt),
+    axis.text.y = element_text(size = txt_pt),
+    axis.title.x = element_text(size = 0),
+    axis.title.y = element_text(size = txt_pt),
+    plot.title = element_text(hjust = 0.5, size = txt_pt)
+  )
+
+df <- data.frame(Tc_8$TEX_Utzschneider_2020_UCell, Tc_8$Tissue)
+
+write.csv(
+  df,
+  file = "../docs/assets/03-Figure-3/TEX_scoring.csv",
+  row.names = FALSE
+)
+```
+
+```{r}
+svglite("../docs/assets/03-Figure-3/Exh_Combined.svg", width = 10, height = 3)
+plot_grid(Volc, Exh_Vln,
+  align = "hv", axis = "tbrl", 
+  rel_heights = c(1,1),
+  ncol = 3)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/03-Figure-3/Exh_Combined.svg")
+```
+
+#-----Correlation between Exhaustion and TCR Signalling------
+```{r}
+p8 <- subset(Tc_8, PB == "Plaque")
+
+Correlations <- data_frame(
+  "Exhaustion" = p8$TEX_Utzschneider_2020_UCell,
+  "TCR Signalling" = p8$TCR_Elliot_2021_UCell)
+
+# Create bins
+Correlations$Exhaustion_Bin <- cut(Correlations$`TCR Signalling`, 
+                                          breaks = 100, 
+                                          labels = FALSE)
+
+# Group by the Exhaustion bin and calculate the mean for each metric
+Correlations_binned <- Correlations %>%
+  group_by(Exhaustion_Bin) %>%
+  summarise(across(c("Exhaustion", "TCR Signalling"), mean, na.rm = TRUE))
+
+write.csv(Correlations_binned, file = "../docs/assets/03-Figure-3/Correlations_binned.csv")
+```
+
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(broom)
+
+## ---- Fit model on binned means ----
+lm_bin <- lm(Exhaustion ~ `TCR Signalling`, data = Correlations_binned)
+lm_sum <- summary(lm_bin)
+r2_bin <- lm_sum$r.squared
+p_bin  <- coef(lm_sum)[2, "Pr(>|t|)"]
+
+## ---- Plot regression on binned data ----
+regression <- ggplot(Correlations_binned,
+       aes(x = `TCR Signalling`, y = Exhaustion)) +
+  
+  # Binned mean points
+  geom_point(size = 2, shape = 21,
+             fill = "#A6CEE3", colour = "black") +
+  
+  # Linear regression on *binned* values
+  geom_smooth(method = "lm", se = TRUE,
+              colour = "#DE2D26", size = 1.2) +
+  
+  # Annotation
+  annotate("text",
+           x = Inf, y = Inf,
+           hjust = 1.5, vjust = 1.5,
+           label = paste0(
+             "R² = ", round(r2_bin, 3), 
+             "\nP = ", signif(p_bin, 3)
+           ),
+           size = txt_mm, family = "Times") +
+  
+  labs(
+    x = "Elliot 2021 \n TCR Signalling UCell Score",
+    y = "Utzschneider 2020 \n Exhaustion UCell Score"
+  ) +
+  
+  theme_pubr(base_family = "Times", base_size = txt_pt) +
+  theme(
+    panel.border = element_rect(colour = "black", fill = NA, size = 1),
+    axis.text    = element_text(size = txt_pt),
+    axis.title   = element_text(size = txt_pt),
+    aspect.ratio = 1
+  )
+
+
+Gene_Sets$TEX_Utzschneider_2020_unique
+
+svglite("../docs/assets/03-Figure-3/regression.svg", width = 2.5, height = 2.5)
+regression
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/03-Figure-3/regression.svg")
+```
+
+```{r}
+svglite("../docs/assets/03-Figure-3/Exh_Combined.svg", width = 8.5, height = 3)
+plot_grid(regression, Volc, Exh_Vln,
+  align = "hv", axis = "tbrl", 
+  rel_heights = c(1,1,1),
+  ncol = 3)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/03-Figure-3/Exh_Combined.svg")
+```
+
+# Save
+```{r}
+saveRDS(Tc,"../objects/Tc.rds")
+saveRDS(Tc_8, "../objects/Tc_8.rds")
+```

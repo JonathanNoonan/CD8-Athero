@@ -1,0 +1,1110 @@
+---
+title: "Figure 2 - Part 1"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
+site: workflowr::wflow_site
+output:
+  workflowr::wflow_html:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Setup {.tabset .tabset-pills}
+## Load the libraries
+```{r message=FALSE, warning=FALSE}
+## Package Management
+#renv::restore()
+set.seed(01122023)
+```
+
+```{r}
+pt_to_mm <- function(pt) pt / 2.95
+# ---- Text size standard (define once per project) ----
+txt_pt <- 10
+txt_mm <- txt_pt / 2.95
+cex_base <- txt_pt / 12
+```
+
+```{r message=FALSE, warning=FALSE}
+## Key
+library(Seurat)
+library(Trex)
+library(scRepertoire)
+library(igraph)
+library(MAST)
+library(ProjecTILs)
+
+## Wrangling
+library(stringr)
+library(tidyr)
+library(dplyr)
+
+## Visualization
+library(pals)
+library(DT)
+library(ggplot2)
+library(ggpubr)
+library(RColorBrewer)
+library(circlize)
+library(ComplexHeatmap)
+library(plot1cell)
+library(ggvenn)
+library(ggalluvial)
+library(stringr)
+library(readr)
+library(gridExtra)
+library(tibble)
+library(enrichR)
+library(EnhancedVolcano)
+#library(nichenetr)
+library(openxlsx)
+library(svglite)
+```
+
+## Load Data
+```{r}
+Tc <- readRDS("../objects/Tc.rds")
+```
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = F, message = F, dpi = 300)
+functions <- list.files("../code/", pattern = "\\.R$", full.names = TRUE)
+invisible(lapply(functions, source))
+```
+
+## Set up output directories
+```{r}
+dir.create("../docs/assets/02-Figure-2")
+```
+
+## Design Elements
+```{r}
+# Create vector colors
+cols <- readRDS("../docs/assets/00-DesignElements/DesignElements.rds")
+```
+
+## Expansion Calculations
+```{r}
+## TCR Recalculation
+Tc_TCR <- subset(Tc, Frequency > 0)
+
+
+Tc_TCR$Exp <- "Exp"
+Tc_TCR <- recalculateFrequency(Tc_TCR, cloneCall = "gene", groupBy = "PID")
+
+Tc_TCR$Frequency <- Tc_TCR$recalFrequency.PID
+
+slot(Tc_TCR, "meta.data")$cloneType <- factor(slot(Tc_TCR, "meta.data")$cloneType, levels = c(
+"Hyperexpanded (0.1 < X <= 1)",
+"Large (0.01 < X <= 0.1)",
+"Medium (0.001 < X <= 0.01)",
+"Small (1e-04 < X <= 0.001)",
+"Rare (0 < X <= 1e-04)",
+"Single Clone", NA))
+
+Tc_TCR$cloneSize <- Tc_TCR $cloneType
+
+table(Tc_TCR$cloneSize)
+
+levels(factor(Tc_TCR$recalFrequency.PID))
+
+## Assign Expanded vs Non-Expanded Label
+Tc_TCR$Expanded <- Tc_TCR$Frequency
+Idents(Tc_TCR) <- "Expanded"
+
+Tc_TCR$Expanded <- ifelse(Tc_TCR$recalFrequency.PID == "Single", "Single", "Expanded")
+Tc_TCR$Expanded <- Tc_TCR$Expanded
+table(Tc_TCR$Expanded)
+```
+
+#-----Human T Cell Expansion an Diversity Metrics-----
+## Plaque % Expansion
+```{r}
+Enrichment <- data.frame(
+  Expanded = Tc_TCR$Expanded,
+  Tissue   = Tc_TCR$PB,
+  Patient  = Tc_TCR$PID
+) %>%
+  group_by(Patient, Tissue) %>%
+  summarise(
+    total = n(),
+    Expanded = sum(Expanded == "Expanded", na.rm = TRUE)
+  ) %>%
+  mutate(
+    percent_Expanded = 100 * Expanded / total,
+    Patient_Group = paste(Patient, Tissue)
+  ) %>%
+  ungroup()
+
+write.csv(Enrichment, file = "../docs/assets/02-Figure-2/PB_Enrichement_Percentages.csv")
+```
+
+## CD4
+```{r}
+Tc4_TCR <- subset(Tc_TCR, CD4_8 == "CD4")
+
+Enrichment <- data.frame(
+  Expanded = Tc4_TCR$Expanded,
+  Tissue   = Tc4_TCR$Tissue,
+  Patient  = Tc4_TCR$PID
+) %>%
+  group_by(Patient, Tissue) %>%
+  summarise(
+    total = n(),
+    Expanded = sum(Expanded == "Expanded", na.rm = TRUE)
+  ) %>%
+  mutate(
+    percent_Expanded = 100 * Expanded / total,
+    Patient_Group = paste(Patient, Tissue)
+  ) %>%
+  ungroup()
+
+write.csv(Enrichment, file = "../docs/assets/02-Figure-2/Unstable_Enrichement_Percentages_CD4.csv")
+
+## PB
+Enrichment <- data.frame(
+  Expanded = Tc4_TCR$Expanded,
+  Tissue   = Tc4_TCR$PB,
+  Patient  = Tc4_TCR$PID
+) %>%
+  group_by(Patient, Tissue) %>%
+  summarise(
+    total = n(),
+    Expanded = sum(Expanded == "Expanded", na.rm = TRUE)
+  ) %>%
+  mutate(
+    percent_Expanded = 100 * Expanded / total,
+    Patient_Group = paste(Patient, Tissue)
+  ) %>%
+  ungroup()
+
+write.csv(Enrichment, file = "../docs/assets/02-Figure-2/PB_Enrichement_Percentages_CD4.csv")
+```
+
+## CD8
+```{r}
+Tc8_TCR <- subset(Tc_TCR, CD4_8 == "CD8")
+
+Enrichment <- data.frame(
+  Expanded = Tc8_TCR$Expanded,
+  Tissue   = Tc8_TCR$Tissue,
+  Patient  = Tc8_TCR$PID
+) %>%
+  group_by(Patient, Tissue) %>%
+  summarise(
+    total = n(),
+    Expanded = sum(Expanded == "Expanded", na.rm = TRUE)
+  ) %>%
+  mutate(
+    percent_Expanded = 100 * Expanded / total,
+    Patient_Group = paste(Patient, Tissue)
+  ) %>%
+  ungroup()
+
+write.csv(Enrichment, file = "../docs/assets/02-Figure-2/Unstable_Enrichement_Percentages_CD8.csv")
+
+## PB
+Enrichment <- data.frame(
+  Expanded = Tc8_TCR$Expanded,
+  Tissue   = Tc8_TCR$PB,
+  Patient  = Tc8_TCR$PID
+) %>%
+  group_by(Patient, Tissue) %>%
+  summarise(
+    total = n(),
+    Expanded = sum(Expanded == "Expanded", na.rm = TRUE)
+  ) %>%
+  mutate(
+    percent_Expanded = 100 * Expanded / total,
+    Patient_Group = paste(Patient, Tissue)
+  ) %>%
+  ungroup()
+
+write.csv(Enrichment, file = "../docs/assets/02-Figure-2/PB_Enrichement_Percentages_CD8.csv")
+```
+
+#----Clonal Scatter----
+## Plaque vs. Blood
+```{r}
+Idents(Tc_TCR) <- "PB"
+scatter <- clonalScatter(Tc_TCR, 
+              cloneCall ="gene", 
+              x.axis = "Plaque", 
+              y.axis = "Blood",
+              dot.size = "total",
+              chain = "both",
+              graph = "proportion") & theme(
+    aspect.ratio = 0.8,
+    text = element_text(family = "Times New Roman"),  
+    axis.text.x = element_text(),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right") & scale_fill_manual(
+    values = c(
+      "Blood.expanded" = "grey",
+      "Blood.singlet"  = "black",
+      "dual.expanded"  = "gold",
+      "Plaque.expanded" = "#DE63B9",
+      "Plaque.singlet"  = "black"
+    ))
+
+
+svglite("../docs/assets/02-Figure-2/Scatter_TCR.svg", width = 3, height = 3)
+scatter
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/02-Figure-2/Scatter_TCR.svg")
+```
+
+```{r}
+Idents(Tc_TCR) <- "Tissue"
+scatter <- clonalScatter(Tc_TCR, 
+              cloneCall ="gene", 
+              x.axis = "Unstable", 
+              y.axis = "Stable",
+              dot.size = "total",
+              chain = "both",
+              graph = "proportion") & theme(
+    aspect.ratio = 0.8,
+    text = element_text(family = "Times New Roman"),  
+    axis.text.x = element_text(),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right") & scale_fill_manual(
+    values = c(
+      "Stable.expanded" = "grey",
+      "Stable.singlet"  = "black",
+      "dual.expanded"  = "gold",
+      "Unstable.expanded" = "#DE63B9",
+      "Unstable.singlet"  = "black"
+    ))
+
+
+svglite("../docs/assets/02-Figure-2/Scatter_TCR_Unst.svg", width = 3, height = 3)
+scatter
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/02-Figure-2/Scatter_TCR_Unst.svg")
+```
+
+#----Differential Expression----
+```{r}
+Test <- subset(Tc_TCR, Tissue != "Blood")
+Test$Test <- paste0(Test$Expanded, "_", Test$Tissue, "_", Test$CD4_8)
+
+levels <- c("Single_Stable_CD4", "Single_Unstable_CD4", "Single_Stable_CD8", "Single_Unstable_CD8", "Expanded_Stable_CD4",  "Expanded_Unstable_CD4",  "Expanded_Stable_CD8"  , "Expanded_Unstable_CD8")
+
+Test$Test<- factor(Test$Test, levels = levels)
+
+Idents(Test) <- "Test"
+
+
+  deg <- FindAllMarkers(
+    Test,
+    min.pct = 0.2,
+    logfc.threshold = 0.25,
+    test.use = "MAST",
+    only.pos = T
+  )
+```
+
+```{r}
+anno_feats <- list(
+Activation = c("CD69", "ICOS", "CD40LG", "CXCR6", "CXCR4", "CD44"),
+Cytokine = c("IFNG", "TNF", "CCL4", "CCL5"),
+Cytotoxicity  = c("FGFBP2", "GNLY", "GZMB", "GZMM", "PRF1", "NKG7", "GZMH"),
+`TCR Signalling` = c("ZAP70", "FYN","CD247", "NR4A1", "NR4A2", "NR4A3", "NFATC2")
+)
+
+Cyto_Dot <- seu_gene_sets_dot(
+    seu = NULL,
+    anno_feats,                         
+    group_by = "cluster",               
+    assay    = NULL,                   
+    use_scaled_for_fill = TRUE,        
+    markers_df = deg,                 
+    markers_gene_col   = "gene",
+    markers_group_col  = "cluster",
+    markers_lfc_col    = "avg_log2FC",
+    markers_padj_col   = "p_val_adj",  
+    markers_pct_col    = NULL,         
+    # aesthetics
+    size_range   = c(1, 5),
+    size_breaks  = c(5, 25, 50, 100),  
+    size_limits  = c(0, 100),          
+    fill_limits  = c(-1, 1),           
+    lfc_limits   = c(-2, 2),           
+    fill_palette = c("blue", "lightgrey", "darkred"),
+    x_label      = "",
+    base_size    = txt_pt,
+    x_angle      = 45,
+    x_text_size  = txt_pt,
+    y_text_size  = txt_pt,
+    x_title_size = txt_pt,
+    bracket_text_size = txt_mm,
+    bracket_tick = 0.25,
+
+    show_missing    = TRUE,
+    missing_label   = "×",
+    missing_size    = 3,
+    missing_color   = "black",
+    missing_alpha   = 0.8,
+
+    y_expand_add_bottom = 0.60,
+    y_expand_add_top    = 0.25,
+    y_bracket_offset    = 0.75,
+    y_label_offset      = 0.2,
+    plot_margin_cm      = c(0.5, 0, 0, 0),
+
+    cluster_groups = FALSE,
+    cluster_genes  = "within_group",
+    dist_method    = "euclidean",
+    hclust_method  = "complete") +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal"
+  ) +  theme(text = element_text(family = "Times"))
+
+svglite("../docs/assets/02-Figure-2/cluster_dot.svg", width = 10, height = 5)
+print(Cyto_Dot)   # ggplot object, or any plot
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/02-Figure-2/cluster_dot.svg")
+```
+
+#----Clone Size and Cytotoxicity---- {.tabset .tabset-pills}
+```{r}
+genes <- c("GZMB", "GNLY", "PRF1", "GZMH")
+p8_TCR <- subset(Tc8_TCR, PB == "Plaque")
+```
+
+```{r}
+Idents(p8_TCR) <- "cloneType"
+
+# --- Rename cloneType levels before plotting ---
+new_labels <- c(
+  "Single \n Clone",
+  "Rare",
+  "Small",
+  "Medium",
+  "Large",
+  "Hyper- \n expanded"
+)
+
+# Ensure factor order matches the reversed Seurat order
+Idents(p8_TCR) <- factor(Idents(p8_TCR),
+                         levels = c(
+                           "Single Clone",
+                           "Rare (0 < X <= 1e-04)",
+                           "Small (1e-04 < X <= 0.001)",
+                           "Medium (0.001 < X <= 0.01)",
+                           "Large (0.01 < X <= 0.1)",
+                           "Hyperexpanded (0.1 < X <= 1)"
+                         ),
+                         labels = (new_labels))
+
+
+Expansion_Track <- VlnPlot(p8_TCR, genes, stack = TRUE, flip = TRUE, fill.by = "ident") &
+  xlab("") &
+  NoLegend() &
+  scale_fill_manual(values = c(
+    "#deebf7",  # lightest
+    "#c6dbef",
+    "#9ecae1",
+    "#6baed6",
+    "#3182bd",
+    "#08519c"   # darkest
+  )) &
+  theme(
+    text = element_text(family = "Times"),
+    axis.text.x = element_text(size = txt_pt),
+    axis.text.y = element_text(size = txt_pt),
+    axis.title.x = element_text(size = txt_pt),
+    axis.title.y = element_text(size = 0, vjust = 0.5),
+    plot.title = element_text(hjust = 0.5, size = 0),
+    strip.text.y = element_text(size = txt_pt)
+  )
+
+svglite("../docs/assets/02-Figure-2/Expansion_new.svg", width = 10, height = 6)
+Expansion_Track
+dev.off()
+knitr::include_graphics("../docs/assets/02-Figure-2/Expansion_new.svg")
+
+```
+
+```{r}
+Cyto_plot <- Cyto_Dot + NoLegend()
+
+svglite("../docs/assets/02-Figure-2/Cytotoxicity.svg", width = 12, height = 2.5)
+plot_grid(Cyto_plot, Expansion_Track,
+  align = "hv", axis = "tbrl", 
+  rel_widths = c(2,1),
+  ncol = 2)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/02-Figure-2/Cytotoxicity.svg")
+```
+```{r}
+legend_grob <- cowplot::get_legend(Cyto_Dot)
+Legend_only <- cowplot::ggdraw(legend_grob)
+
+svglite("../docs/assets/02-Figure-2/Cytotoxicity_legend.svg", width = 12, height = 2.5)
+Legend_only
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/02-Figure-2/Cytotoxicity_legend.svg")
+```
+
+#----Gene Concordance---- {.tabset .tabset-pills}
+```{r}
+## ---- CD4/CD8 vs Unstable directionality in one chunk ----
+library(Seurat)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+
+sig_thresh <- 0.05
+
+## 1) CD8 plaque: Expanded vs Single
+Idents(p8_TCR) <- "Expanded"
+
+CD8_DEG_comp <- FindMarkers(
+  p8_TCR,
+  min.pct        = 0.2,
+  ident.1        = "Expanded",
+  logfc.threshold = 0,
+  test.use       = "MAST",
+  only.pos       = FALSE
+)
+CD8_DEG_comp$gene <- rownames(CD8_DEG_comp)
+
+## 2) CD4 plaque: Expanded vs Single
+p4_TCR <- subset(Tc4_TCR, PB == "Plaque")
+Idents(p4_TCR) <- "Expanded"
+
+CD4_DEG_comp <- FindMarkers(
+  p4_TCR,
+  min.pct        = 0.2,
+  ident.1        = "Expanded",
+  logfc.threshold = 0,
+  test.use       = "MAST",
+  only.pos       = FALSE
+)
+CD4_DEG_comp$gene <- rownames(CD4_DEG_comp)
+
+## 3) Unstable vs Stable plaque
+Idents(Tc_TCR) <- "PB"
+test <- subset(Tc_TCR, PB == "Plaque")
+
+Idents(test) <- "Tissue"
+Unstable_DEG_comp <- FindMarkers(
+  test,
+  min.pct        = 0.2,
+  ident.1        = "Unstable",
+  logfc.threshold = 0,
+  test.use       = "MAST",
+  only.pos       = FALSE
+)
+Unstable_DEG_comp$gene <- rownames(Unstable_DEG_comp)
+```
+
+
+```{r}
+## 4) Ensure gene column exists (safety)
+if (!"gene" %in% colnames(CD8_DEG_comp)) {
+  CD8_DEG_comp <- CD8_DEG_comp %>% rownames_to_column("gene")
+}
+if (!"gene" %in% colnames(Unstable_DEG_comp)) {
+  Unstable_DEG_comp <- Unstable_DEG_comp %>% rownames_to_column("gene")
+}
+if (!"gene" %in% colnames(CD4_DEG_comp)) {
+  CD4_DEG_comp <- CD4_DEG_comp %>% rownames_to_column("gene")
+}
+
+## 5) Gene universe: significant in CD8 OR Unstable (your original behaviour)
+sig_genes <- union(
+  CD8_DEG_comp      %>% dplyr::filter(p_val_adj < sig_thresh) %>% pull(gene),
+  Unstable_DEG_comp %>% dplyr::filter(p_val_adj < sig_thresh) %>% pull(gene)
+)
+
+## 6) Merge CD8 + Unstable (as before), then join CD4
+merged_sig <- full_join(
+  CD8_DEG_comp %>%
+    dplyr::select(gene, avg_log2FC, p_val_adj) %>%
+    rename(CD8_logFC = avg_log2FC, CD8_padj = p_val_adj),
+  Unstable_DEG_comp %>%
+    dplyr::select(gene, avg_log2FC, p_val_adj) %>%
+    rename(Unstable_logFC = avg_log2FC, Unstable_padj = p_val_adj),
+  by = "gene"
+) %>%
+  dplyr::filter(gene %in% sig_genes) %>%
+  mutate(
+    CD8_logFC      = if_else(is.na(CD8_logFC),      0, CD8_logFC),
+    Unstable_logFC = if_else(is.na(Unstable_logFC), 0, Unstable_logFC),
+    CD8_padj       = if_else(is.na(CD8_padj),       0, CD8_padj),
+    Unstable_padj  = if_else(is.na(Unstable_padj), 0, Unstable_padj)
+  ) %>%
+  left_join(
+    CD4_DEG_comp %>%
+      dplyr::select(gene, avg_log2FC, p_val_adj) %>%
+      rename(CD4_logFC = avg_log2FC, CD4_padj = p_val_adj),
+    by = "gene"
+  ) %>%
+  mutate(
+    CD4_logFC = if_else(is.na(CD4_logFC), 0, CD4_logFC),
+    CD4_padj  = if_else(is.na(CD4_padj),  0, CD4_padj)
+  )
+
+cat("Retained", nrow(merged_sig),
+    "genes significant in CD8 or Unstable.\n")
+
+## 7) Direction calls + concordance for CD8 and CD4 vs Unstable
+merged_sig_dir <- merged_sig %>%
+  mutate(
+    direction_CD8 = case_when(
+      CD8_logFC > 0  ~ "Up",
+      CD8_logFC < 0  ~ "Down",
+      TRUE           ~ "NoChange"
+    ),
+    direction_CD4 = case_when(
+      CD4_logFC > 0  ~ "Up",
+      CD4_logFC < 0  ~ "Down",
+      TRUE           ~ "NoChange"
+    ),
+    direction_Unstable = case_when(
+      Unstable_logFC > 0  ~ "Up",
+      Unstable_logFC < 0  ~ "Down",
+      TRUE                ~ "NoChange"
+    ),
+    # CD8 vs Unstable (your original logic)
+    concordance_CD8 = case_when(
+      direction_CD8 == direction_Unstable & direction_CD8 != "NoChange" ~ "SameDirection",
+      direction_CD8 != direction_Unstable &
+        direction_CD8 != "NoChange" &
+        direction_Unstable != "NoChange" ~ "OppositeDirection",
+      TRUE ~ "Neutral"
+    ),
+    # CD4 vs Unstable (parallel logic)
+    concordance_CD4 = case_when(
+      direction_CD4 == direction_Unstable & direction_CD4 != "NoChange" ~ "SameDirection",
+      direction_CD4 != direction_Unstable &
+        direction_CD4 != "NoChange" &
+        direction_Unstable != "NoChange" ~ "OppositeDirection",
+      TRUE ~ "Neutral"
+    )
+  )
+
+## 8) Summaries + combined facet plot
+direction_long <- bind_rows(
+  merged_sig_dir %>%
+    count(concordance_CD8) %>%
+    mutate(comp = "CD8") %>%
+    rename(concordance = concordance_CD8),
+  merged_sig_dir %>%
+    count(concordance_CD4) %>%
+    mutate(comp = "CD4") %>%
+    rename(concordance = concordance_CD4)
+) %>%
+  group_by(comp) %>%
+  mutate(Percent = round(100 * n / sum(n), 1)) %>%
+  ungroup()
+
+Concordance <- ggplot(direction_long,
+       aes(x = concordance, y = Percent, fill = concordance)) +
+  geom_col() +
+  geom_text(aes(label = paste0(Percent, "%")),
+            vjust = -0.5, size = txt_mm) +
+  scale_fill_manual(values = c(
+    "SameDirection"     = "#1b9e77",
+    "OppositeDirection" = "#d95f02",
+    "Neutral"           = "grey80"
+  )) +
+  facet_wrap(
+    ~ comp, nrow = 1,
+    labeller = as_labeller(c(
+      CD4 = "CD4 \n Expanded vs. Single",
+      CD8 = "CD8 \n Expanded vs. Single"
+    ))
+  ) +
+  theme_bw(base_family = "Times New Roman") +
+  labs(
+    x     = NULL,
+    y     = "% of genes",
+    title = "DEG directionality relative to \n Unstable vs Stable Plaque"
+  ) +
+  theme(
+    axis.text.x  = element_text(size = txt_pt),
+    axis.text.y  = element_text(size = txt_pt),
+    strip.text   = element_text(size = txt_pt, face = "bold"),
+    plot.title   = element_text(hjust = 0.5, size = txt_pt),
+    legend.position = "none"
+  ) + ylim(c(0,100)) + scale_x_discrete(labels = c(
+  SameDirection     = "Same\nDirection",
+  OppositeDirection = "Opposite\nDirection",
+  Neutral           = "Neutral"
+))
+
+svglite("../docs/assets/02-Figure-2/Concordance.svg", width = 5, height = 2.5)
+Concordance
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/02-Figure-2/Concordance.svg")
+```
+
+## Concordance HM
+```{r}
+library(ComplexHeatmap)
+library(circlize)
+
+mat <- merged_sig %>%
+  dplyr::select(gene, CD4_logFC, CD8_logFC, Unstable_logFC) %>%
+  column_to_rownames("gene") %>%
+  t()
+
+ht <- Heatmap(
+  mat,
+  name = "log2FC",
+  col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
+
+  cluster_rows    = FALSE,
+  cluster_columns = TRUE,
+  show_column_names = FALSE,
+
+  row_labels = c(
+    "CD4_logFC"      = "Plaque CD4+ Expanded vs Single",
+    "CD8_logFC"      = "Plaque CD8+ Expanded vs Single",
+    "Unstable_logFC" = "Unstable vs Stable"
+  )[rownames(mat)],
+
+  row_names_side = "left",
+  row_names_gp   = gpar(
+    fontsize   = txt_pt,
+    fontfamily = "Times"
+  ),
+
+  heatmap_legend_param = list(
+    title = "log2FC",
+    at    = c(-2, 0, 2),
+    labels = c("down", "", "up"),
+    direction = "horizontal",
+
+    title_gp  = gpar(
+      fontsize   = txt_pt,
+      fontfamily = "Times"
+    ),
+    labels_gp = gpar(
+      fontsize   = txt_pt,
+      fontfamily = "Times"
+    ),
+
+    legend_width  = unit(30, "mm"),
+    legend_height = unit(4,  "mm")
+  )
+)
+
+
+svglite("../docs/assets/02-Figure-2/Concordance_HM.svg", width = 5, height = 2.5)
+draw(ht, heatmap_legend_side = "bottom")
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/02-Figure-2/Concordance_HM.svg")
+```
+
+#----Clonal Networks---- {.tabset .tabset-pills}
+```{r}
+directories <- list.dirs("../data/Human", 
+                        recursive = TRUE, 
+                        full.names = TRUE)
+
+GEX.files <- directories[grepl("sample_feature_bc_matrix", directories)]
+
+TCR.files <- list.files("../data/Human", 
+                        pattern = "filtered_contig_annotations", 
+                        recursive = TRUE,
+                        full.names = TRUE)
+
+samples <- stringr::str_split(TCR.files, "/", simplify = TRUE)[,4]
+
+TCR.list <- list() #this will be the store for processed seurat objects before merge
+
+for(i in seq_along(TCR.files)) {
+  #Adding TCR contig data
+  TCR <- read.csv(TCR.files[i], stringsAsFactors = F)
+  
+  
+  ## add sample ID prefic to barcode
+TCR$barcode <- paste0(samples[i], "_", TCR$barcode)
+
+  ## subset to remove cells not included post QC
+sub <- rownames(subset(Tc_TCR@meta.data, orig.ident == samples[i]))
+
+TCR <- TCR[TCR$barcode %in% sub, ]
+
+## combineTCR
+  
+  combined.TCR <- combineTCR(list(TCR), 
+                             samples = samples[i],
+                   removeNA = TRUE, 
+                   removeMulti = TRUE)
+  
+  combined.TCR[[1]]$barcode <- stringr::str_replace(combined.TCR[[1]]$barcode, samples[i], "")
+  
+combined.TCR[[1]]$barcode <- stringr::str_replace(combined.TCR[[1]]$barcode, "_", "")
+
+    # Add Sample and metadata
+rownames(combined.TCR[[1]]) <- combined.TCR[[1]]$barcode
+
+    # Get common row names between the data frames
+common_rows <- intersect(rownames(combined.TCR[[1]]), rownames(Tc_TCR@meta.data))
+  combined.TCR[[1]]$PID <- Tc_TCR$PID[common_rows]
+  combined.TCR[[1]]$celltype <- Tc_TCR$celltype[common_rows]
+  combined.TCR[[1]]$Tissue <- Tc_TCR$Tissue[common_rows]
+  combined.TCR[[1]]$CD4_8 <- Tc_TCR$CD4_8[common_rows]
+  combined.TCR[[1]]$sample <- samples[i]
+  TCR.list[[samples[i]]] <- combined.TCR[[1]]
+
+} 
+
+result_df <- bind_rows(TCR.list)
+```
+
+## Blood
+```{r}
+# Create list per tissue:
+Blood <- subset(result_df, result_df$Tissue == "Blood")
+
+Blood_Clusters <- clonalCluster(Blood,
+                               chain = "TRA",
+                               sequence = "aa",
+                               threshold = 0.75)
+
+igraph.object <- clonalCluster(Blood,
+                               chain = "TRA",
+                               sequence = "aa",
+                               threshold = 0.75, 
+                               exportGraph = TRUE)
+
+#Plotting
+png(file="../docs/assets/02-Figure-2/igraph_Blood.png",width = 7.5, height = 7.5,units = 'in', res = 1200)
+plot(
+  igraph.object,
+  vertex.size     = sqrt(igraph::V(igraph.object)$size)*1.5,
+  vertex.label    = NA,
+  edge.arrow.size = 0.2,
+  vertex.color    = "grey",
+  margin = 0.5
+)
+invisible(dev.off())
+```
+![](../docs/assets/02-Figure-2/igraph_Blood.png)
+
+## Plaque
+```{r}
+# Create list per tissue:
+Plaque <- subset(result_df, result_df$Tissue == c("Stable", "Unstable"))
+
+Plaque_Clusters <- clonalCluster(Plaque,
+                               chain = "TRA",
+                               sequence = "aa",
+                               threshold = 0.75, 
+                               exportGraph = FALSE)
+
+igraph.object <- clonalCluster(Plaque,
+                               chain = "TRA",
+                               sequence = "aa",
+                               threshold = 0.75, 
+                               exportGraph = TRUE)
+
+
+#Plotting
+png(file="../docs/assets/02-Figure-2/igraph_Plaque.png",width = 7.5, height = 7.5,units = 'in', res = 1200)
+plot(
+  igraph.object,
+  vertex.size     = sqrt(igraph::V(igraph.object)$size)*1.5,
+  vertex.label    = NA,
+  edge.arrow.size = 0.2,
+  vertex.color    = "#D7A2FF",
+  margin = 0.5
+)
+invisible(dev.off())
+
+```
+![](../docs/assets/02-Figure-2/igraph_Plaque.png)
+
+## Stable
+```{r}
+# Create list per tissue:
+Plaque <- subset(result_df, result_df$Tissue == "Stable")
+
+Plaque_Clusters <- clonalCluster(Plaque,
+                               chain = "TRA",
+                               sequence = "aa",
+                               threshold = 0.75, 
+                               exportGraph = FALSE)
+
+igraph.object <- clonalCluster(Plaque,
+                               chain = "TRA",
+                               sequence = "aa",
+                               threshold = 0.75, 
+                               exportGraph = TRUE)
+
+
+#Plotting
+png(file="../docs/assets/02-Figure-2/igraph_Stable.png",width = 7.5, height = 7.5,units = 'in', res = 1200)
+plot(
+  igraph.object,
+  vertex.size     = sqrt(igraph::V(igraph.object)$size)*1.5,
+  vertex.label    = NA,
+  edge.arrow.size = 0.2,
+  vertex.color    = "#00C7CC",
+  margin = 0.5
+)
+invisible(dev.off())
+
+```
+![](../docs/assets/02-Figure-2/igraph_Stable.png)
+
+## Stable
+```{r}
+# Create list per tissue:
+Plaque <- subset(result_df, result_df$Tissue == "Unstable")
+
+Plaque_Clusters <- clonalCluster(Plaque,
+                               chain = "TRA",
+                               sequence = "aa",
+                               threshold = 0.75, 
+                               exportGraph = FALSE)
+
+igraph.object <- clonalCluster(Plaque,
+                               chain = "TRA",
+                               sequence = "aa",
+                               threshold = 0.75, 
+                               exportGraph = TRUE)
+
+
+#Plotting
+png(file="../docs/assets/02-Figure-2/igraph_Unstable.png",width = 7.5, height = 7.5,units = 'in', res = 1200)
+plot(
+  igraph.object,
+  vertex.size     = sqrt(igraph::V(igraph.object)$size)*1.5,
+  vertex.label    = NA,
+  edge.arrow.size = 0.2,
+  vertex.color    = "#FA7F74",
+  margin = 0.5
+)
+invisible(dev.off())
+
+```
+![](../docs/assets/02-Figure-2/igraph_Unstable.png)
+
+```{r}
+library(data.table)
+
+## ---------- helper to compute network stats per tissue ----------
+compute_network_stats <- function(df,
+                                  tissue_label,
+                                  chain = "TRA",
+                                  sequence = "aa",
+                                  threshold = 0.75) {
+  # only PIDs actually present in this tissue subset
+  ids <- unique(df$PID)
+
+  out_list <- vector("list", length(ids))
+  names(out_list) <- ids
+
+  for (pid in ids) {
+    sub_i <- df[df$PID == pid, , drop = FALSE]
+    if (nrow(sub_i) == 0) next
+
+    # be defensive around clonalCluster
+    Clusters <- try(
+      clonalCluster(
+        sub_i,
+        chain    = chain,
+        sequence = sequence,
+        threshold = threshold
+      ),
+      silent = TRUE
+    )
+
+    if (inherits(Clusters, "try-error")) next
+
+    x <- as.data.frame(table(Clusters$TRA_cluster))
+    y <- as.data.frame(table(Clusters$cdr3_aa1))
+
+    if (nrow(x) == 0 || nrow(y) == 0) next
+
+    out_list[[pid]] <- data.frame(
+      Median.Cluster    = median(x$Freq),
+      Mean.Cluster      = mean(x$Freq),
+      Median.Clone.Size = median(y$Freq),
+      Mean.Clone.Size   = mean(y$Freq),
+      Tissue            = tissue_label,
+      PID               = pid
+    )
+  }
+
+  rbindlist(out_list, use.names = TRUE, fill = TRUE)
+}
+
+table(result_df$PID, result_df$Tissue)
+
+## subsets 
+blood_df    <- subset(result_df, Tissue == "Blood")
+stable_df   <- subset(result_df, Tissue == "Stable")
+unstable_df <- subset(result_df, Tissue == "Unstable")
+plaque_df   <- subset(result_df, Tissue %in% c("Stable", "Unstable")) 
+##  run the helper for each 
+net_blood    <- compute_network_stats(blood_df,    tissue_label = "Blood")
+net_stable   <- compute_network_stats(stable_df,   tissue_label = "Stable")
+net_unstable <- compute_network_stats(unstable_df, tissue_label = "Unstable")
+net_plaque   <- compute_network_stats(plaque_df,   tissue_label = "Plaque")  # combined stable+unstable
+
+##combine & save
+network <- rbindlist(
+  list(net_blood, net_plaque, net_stable, net_unstable),
+  use.names = TRUE,
+  fill = TRUE
+)
+
+write.csv(network, file = "../docs/assets/02-Figure-2/network.csv", row.names = FALSE)
+```
+
+#----Chao Index---- {.tabset .tabset-pills}
+Note that the first part of this code that generates diversity metrics (Chao Index) utilised scRepertoire V1. 
+```{r}
+devtools::install_github("BorchLab/scRepertoire@v1")
+```
+
+## Tissue Expanded (All)
+```{r eval=FALSE, include=FALSE}
+# Blood versus Plaque considering entire T cell population
+All_TCR <- split(Tc_TCR@meta.data, Tc_TCR$Tissue)
+
+A <- clonalDiversity(All_TCR, 
+                cloneCall = "gene", 
+                group.by = "PID", 
+                x.axis = "Tissue", 
+                n.boots = 500,
+                exportTable = T)
+A$Comparison <- "Tissue_All"
+
+## Blood verses Plaque considering only CD4
+All_TCR <- subset(Tc_TCR, CD4_8 != "CD4")
+All_TCR <- split(All_TCR@meta.data, All_TCR$Tissue)
+
+B <- clonalDiversity(All_TCR, 
+                cloneCall = "gene", 
+                group.by = "PID", 
+                x.axis = "Tissue", 
+                n.boots = 500, exportTable = T)
+B$Comparison <- "CD4_Tissue"
+
+## Blood verses Plaque considering only CD8
+All_TCR <- subset(Tc_TCR, CD4_8 != "CD8")
+All_TCR <- split(All_TCR@meta.data, All_TCR$Tissue)
+
+C <- clonalDiversity(All_TCR, 
+                cloneCall = "gene", 
+                group.by = "PID", 
+                x.axis = "Tissue", 
+                n.boots = 500, exportTable = T)
+C$Comparison <- "CD8_Tissue"
+
+```
+
+## Plaque vs. Blood
+```{r eval=FALSE, include=FALSE}
+All_TCR <- subset(Tc_TCR, CD4_8 != "Impure")
+All_TCR <- split(All_TCR@meta.data, All_TCR$PB)
+
+D <- clonalDiversity(All_TCR, 
+                cloneCall = "gene", 
+                group.by = "PID", 
+                x.axis = "PB", 
+                n.boots = 500,
+                exportTable = T)
+D$Comparison <- "PB_All"
+
+## Blood verses Plaque considering only CD4
+All_TCR <- subset(Tc_TCR, CD4_8 == "CD4")
+All_TCR <- split(All_TCR@meta.data, All_TCR$PB)
+
+E <- clonalDiversity(All_TCR, 
+                cloneCall = "gene", 
+                group.by = "PID", 
+                x.axis = "PB", 
+                n.boots = 500, exportTable = T)
+E$Comparison <- "CD4_PB"
+
+## Blood verses Plaque considering only CD8
+All_TCR <- subset(Tc_TCR, CD4_8 == "CD8")
+All_TCR <- split(All_TCR@meta.data, All_TCR$PB)
+
+`F` <- clonalDiversity(All_TCR, 
+                cloneCall = "gene", 
+                group.by = "PID", 
+                x.axis = "PB", 
+                n.boots = 500, exportTable = T)
+`F`$Comparison <- "CD8_PB"
+```
+
+```{r}
+## CD8 versus CD4
+## Blood verses Plaque considering only CD8
+All_TCR <- subset(Tc_TCR, PB == "Plaque")
+All_TCR$Test <- paste0(All_TCR$Tissue,"_", All_TCR$CD4_8)
+All_TCR <- split(All_TCR@meta.data, All_TCR$Test)
+G <- clonalDiversity(All_TCR, 
+                cloneCall = "gene", 
+                group.by = "PID", 
+                x.axis = "Test", 
+                n.boots = 500, exportTable = T)
+G$Comparison <- "CD4vs8_Un_Stable"
+```
+
+```{r eval=FALSE, include=FALSE}
+colnames(A) <- c("Shannon", "Inv.Simpson", "Chao", "ACE", "Inv.Pielou", "PID", "Sample",  "Comparison")
+colnames(B) <- c("Shannon", "Inv.Simpson", "Chao", "ACE", "Inv.Pielou", "PID", "Sample",  "Comparison")
+colnames(C) <- c("Shannon", "Inv.Simpson", "Chao", "ACE", "Inv.Pielou", "PID", "Sample",  "Comparison")
+colnames(D) <- c("Shannon", "Inv.Simpson", "Chao", "ACE", "Inv.Pielou", "PID", "Sample",  "Comparison")
+colnames(E) <- c("Shannon", "Inv.Simpson", "Chao", "ACE", "Inv.Pielou", "PID", "Sample",  "Comparison")
+colnames(`F`) <- c("Shannon", "Inv.Simpson", "Chao", "ACE", "Inv.Pielou", "PID", "Sample",  "Comparison")
+colnames(G) <- c("Shannon", "Inv.Simpson", "Chao", "ACE", "Inv.Pielou", "PID", "Sample",  "Comparison")
+
+Diversity_Metrics <- rbind(A,B,C,D,E,`F`,G)
+Diversity_Metrics <- Diversity_Metrics %>% dplyr::select(Chao, PID, Sample, Comparison)
+
+write.csv(Diversity_Metrics, file = "../docs/assets/02-Figure-2/Diversity.csv")
+```
+
+#----Morisita Overlap---- {.tabset .tabset-pills}
+```{r,}
+Tc_TCR$PID_PB <- paste0(Tc_TCR$PID, "_", Tc_TCR$PB)
+Clonotypes <- split(Tc_TCR@meta.data, Tc_TCR$PID_PB)
+
+a <- clonalOverlap(Clonotypes, cloneCall = "gene", method = "morisita",  exportTable = T) 
+b <- clonalOverlap(Clonotypes, cloneCall = "gene", method = "morisita", chain = "TRA",  exportTable = T) 
+c <- clonalOverlap(Clonotypes, cloneCall = "gene", method = "morisita",  chain = "TRB",  exportTable = T) 
+
+a$Chain <- "both"
+b$Chain <- "TRA"
+c$Chain <- "TRB"
+
+d <- rbind(a,b,c)
+
+d <- d %>%
+  mutate(
+    Tissue = str_extract(rownames(d), "Blood|Plaque"))
+
+write.csv(d, file = "../docs/assets/02-Figure-2/Overlap.csv")
+```
+
+# Save
+```{r}
+saveRDS(Tc,"../objects/Tc.rds")
+saveRDS(Tc_TCR,"../objects/Tc_TCR.rds")
+```
+
+```{r}
+sessionInfo()
+```
+

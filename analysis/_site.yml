@@ -1,0 +1,46 @@
+name: CD8T
+output_dir: ../docs
+navbar:
+  title: CD8T
+  left:
+  - text: Home
+    href: index.html
+  - text: Design
+    href: 01-DesignElements.html
+  - text: Figure 1
+    menu:
+    - text: Main Figure
+      href: 02-Figure_1.html
+    - text: Related Supplemental Data
+      href: 03-Figure_1 Supp.html
+  - text: Figure 2
+    menu:
+    - text: Main Figure
+      href: 04-Figure_2.html
+    - text: Related Supplemental Data
+      href: 05-Figure_2_Supp.html
+  - text: Figure 3
+    menu:
+    - text: Main Figure
+      href: 06-Figure_3.html
+    - text: Related Supplemental Data
+      href: 07-Figure_3_Supp.html
+  - text: Figure 4
+    menu:
+    - text: Main Figure - Part 1
+      href: 08-Figure_4.html
+    - text: Main Figure - Part 2
+      href: 08-Figure_4B.html
+    - text: Related Supplemental Data
+      href: 09-Figure_4_Supp.html
+    - text: Prep
+      href: 08-Figure_4_Prep.html
+  - text: License
+    href: license.html
+output:
+  workflowr::wflow_html:
+    toc: yes
+    toc_float: yes
+    theme: cosmo
+    highlight: textmate
+    code_folding: hide

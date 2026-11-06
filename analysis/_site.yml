@@ -37,6 +37,10 @@ navbar:
       href: 08-Figure_4_Prep.html
   - text: License
     href: license.html
+  right:
+  - icon: fab fa-github
+    text: Source code
+    href: https://github.com/JonathanNoonan/CD8-Athero
 output:
   workflowr::wflow_html:
     toc: yes

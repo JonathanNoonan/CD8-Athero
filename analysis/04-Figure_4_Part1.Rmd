@@ -1,0 +1,1188 @@
+---
+title: "Figure 4 - Part 1"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
+site: workflowr::wflow_site
+output:
+  workflowr::wflow_html:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Setup {.tabset .tabset-pills}
+## Load the libraries
+```{r message=FALSE, warning=FALSE}
+## Package Management
+set.seed(01122023)
+
+suppressPackageStartupMessages({
+## Key
+library(Seurat)
+library(scRepertoire)
+library(MAST)
+library(ProjecTILs)
+
+## Wrangling
+library(stringr)
+library(tidyr)
+library(dplyr)
+library(nichenetr)
+
+## Visualization
+library(pals)
+library(DT)
+library(ggplot2)
+library(ggpubr)
+library(RColorBrewer)
+library(circlize)
+library(ComplexHeatmap)
+library(plot1cell)
+library(ggvenn)
+library(ggalluvial)
+library(stringr)
+library(readr)
+library(gridExtra)
+library(tibble)
+library(enrichR)
+library(EnhancedVolcano)
+library(openxlsx)
+library(svglite)
+library(eulerr)
+})
+```
+
+## Load Data
+```{r}
+Tc <- readRDS("../objects/Tc.rds")
+Tc_4 <- readRDS("../objects/Tc_4.rds")
+Tc_8 <- readRDS("../objects/Tc_8.rds")
+scenic <- readRDS("../objects/Tc_auc.rds")
+
+scenic$cut <- rownames(scenic@meta.data)
+Idents(scenic) <- "cut"
+
+subset1 <- colnames(Tc_8)
+sc8 <- subset(scenic, idents = subset1)
+
+subset2 <- colnames(Tc)
+sc <- subset(scenic, idents = subset2)
+
+Tc[["AUC"]] <- sc[["AUC"]]
+Tc_8[["AUC"]] <- sc8[["AUC"]]
+
+```
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = F, message = F, dpi = 300)
+functions <- list.files("../code/", pattern = "\\.R$", full.names = TRUE)
+invisible(lapply(functions, source))
+```
+
+## Set up output directories
+```{r}
+dir.create("../docs/assets/04-Figure-4")
+dir.create("../output/04-Figure-4")
+```
+
+## Design Elements
+```{r}
+# Create vector colors
+cols <- readRDS("../docs/assets/00-DesignElements/DesignElements.rds")
+```
+
+## Define Gene Sets
+### Positive Negative 
+```{r}
+# Poon NI 2023
+xl <- read.xlsx("../data/TRM_Sig/Poonetal_SuppTable7_barrTRM_v_Other_DEGs.xlsx", sheet = 1)
+xl <- xl[-1] 
+xl_up <- xl %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = c("Tissue", ".value"),
+    names_pattern = "(JE|LG|SK)_(.*)"
+  ) %>% subset(logfoldchang > 0.75 & pvals_adj < 0.05) %>%
+  group_by(names) %>% 
+  dplyr::filter(n_distinct(Tissue) >= 3) %>%
+  ungroup()  
+
+xl_up <- unique(xl_up$names)
+xl_up <- paste0(xl_up, "+")
+
+xl_down <- xl %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = c("Tissue", ".value"),
+    names_pattern = "(JE|LG|SK)_(.*)"
+  ) %>% subset(logfoldchang < -0.75 & pvals_adj <0.05) %>%
+  group_by(names) %>% 
+  dplyr::filter(n_distinct(Tissue) >= 3) %>%
+  ungroup()  
+# The data have been subset to include significant genes only present in 2 or more organs
+
+xl_down <- unique(xl_down$names)
+xl_down <- paste0(xl_down, "-")
+Poon_2023 <- c(xl_up, xl_down)
+
+# Mackay 2016
+Mackay_2016 <- read.xlsx("../data/TRM_Sig/Trm_sig_Mackay2016_suppFig13.xlsx", sheet = 1)
+Mackay_2016 <- as.vector(na.omit(convert_mouse_to_human_symbols(Mackay_2016$Gene)))
+
+# Scott 2025 - Genes_Up
+Scott_2025_Icos <- read.xlsx("../data/TRM_Sig/Trm_signature_Scott2025_Figure7.xlsx", sheet = 1)
+Scott_2025_NoIcos <- read.xlsx("../data/TRM_Sig/Trm_signature_Scott2025_Figure7.xlsx", sheet = 3)
+Scott_2025_up <- unique(c(Scott_2025_Icos$Icoshi_Trm_up_genes, Scott_2025_NoIcos$Icoslo_Trm_up_genes))
+Scott_2025_up <- paste0(as.vector(na.omit(convert_mouse_to_human_symbols(Scott_2025_up))), "+")
+
+# Scott 2025 - Genes_Down
+Scott_2025_Icos <- read.xlsx("../data/TRM_Sig/Trm_signature_Scott2025_Figure7.xlsx", sheet = 2)
+Scott_2025_NoIcos <- read.xlsx("../data/TRM_Sig/Trm_signature_Scott2025_Figure7.xlsx", sheet = 4)
+Scott_2025_down <- unique(c(Scott_2025_Icos$Icoshi_Trm_down_genes, Scott_2025_NoIcos$Icoslo_Trm_down_genes))
+Scott_2025_down <- paste0(as.vector(na.omit(convert_mouse_to_human_symbols(Scott_2025_down))), "-")
+Scott_2025 <- c(Scott_2025_up, Scott_2025_down)
+
+# Jaiswal
+Jaiswal_2022 <- read.xlsx("../data/TRM_Sig/Trm_sig_Jaiswal2022_supp1.xlsx", sheet = 1)
+up <- c(Jaiswal_2022$Exclusive_high, Jaiswal_2022$non_exclusive_up )
+up <- na.omit(up)
+down <- subset(Jaiswal_2022, Exclusive_down != "NA")$Exclusive_down
+Jaiswal_2022 <- c(paste0(up, "+"), paste0(down, "-") )
+  
+Gene_Sets <- list()
+Gene_Sets[["Poon_2023"]] <- Poon_2023
+Gene_Sets[["Jaiswal_2022"]] <- Jaiswal_2022
+Gene_Sets[["Mackay_2016"]] <- Mackay_2016
+Gene_Sets[["Scott_2025"]] <- Scott_2025
+
+Gene_Sets$Scott_2025
+
+
+### Clean
+# Poon NI 2023
+xl <- read.xlsx("../data/TRM_Sig/Poonetal_SuppTable7_barrTRM_v_Other_DEGs.xlsx", sheet = 1)
+xl <- xl[-1] 
+xl_up <- xl %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = c("Tissue", ".value"),
+    names_pattern = "(JE|LG|SK)_(.*)"
+  ) %>% subset(logfoldchang > 0.75 & pvals_adj < 0.05) %>%
+  group_by(names) %>% 
+  dplyr::filter(n_distinct(Tissue) >= 3) %>%
+  ungroup()  
+
+Poon_2023 <- unique(xl_up$names)
+
+
+# Mackay 2016
+Mackay_2016 <- read.xlsx("../data/TRM_Sig/Trm_sig_Mackay2016_suppFig13.xlsx", sheet = 1)
+Mackay_2016 <- as.vector(na.omit(convert_mouse_to_human_symbols(Mackay_2016$Gene)))
+
+# Scott 2025 - Genes_Up
+Scott_2025_Icos <- read.xlsx("../data/TRM_Sig/Trm_signature_Scott2025_Figure7.xlsx", sheet = 1)
+Scott_2025_NoIcos <- read.xlsx("../data/TRM_Sig/Trm_signature_Scott2025_Figure7.xlsx", sheet = 3)
+Scott_2025_up <- unique(c(Scott_2025_Icos$Icoshi_Trm_up_genes, Scott_2025_NoIcos$Icoslo_Trm_up_genes))
+Scott_2025 <- as.vector(na.omit(convert_mouse_to_human_symbols(Scott_2025_up)))
+
+# Jaiswal
+Jaiswal_2022 <- read.xlsx("../data/TRM_Sig/Trm_sig_Jaiswal2022_supp1.xlsx", sheet = 1)
+up <- c(Jaiswal_2022$Exclusive_high, Jaiswal_2022$non_exclusive_up )
+up <- na.omit(up)
+Jaiswal_2022 <- up
+
+Clean_Sets <- list()
+Clean_Sets[["Poon_2023"]] <- Poon_2023
+Clean_Sets[["Jaiswal_2022"]] <- Jaiswal_2022
+Clean_Sets[["Mackay_2016"]] <- Mackay_2016
+Clean_Sets[["Scott_2025"]] <- Scott_2025
+
+gene_counts <- table(unlist(Clean_Sets, use.names = FALSE))
+genes_2plus <- names(gene_counts[gene_counts >= 2])
+genes_2plus <- unique(genes_2plus)
+```
+
+## Text base
+```{r}
+pt_to_mm <- function(pt) pt / 2.95
+txt_pt <- 10
+txt_mm <- txt_pt / 2.95
+cex_base <- txt_pt / 12
+```
+
+## label levels
+```{r}
+lvl_4 <- c(
+  "CD4 TN",
+  "CD4 TSM",
+  "CD4 THDM",
+  "CD4 TH1DM",
+  "CD4 TCTLDM",
+  "CD4 Regulatory",
+  "CD4 Proliferating")
+
+lab_4 <- c(
+  "CD4 TN"            = expression("CD4 TN"),
+  "CD4 TSM"           = expression("CD4 TSM"),
+  "CD4 THDM"          = expression("CD4 " * T[H] * DM),
+  "CD4 TH1DM"         = expression("CD4 " * T[H1] * DM),
+  "CD4 TCTLDM"        = expression("CD4 " * T[CTL] * DM),
+  "CD4 Regulatory"    = expression("CD4 " * T[reg]),
+  "CD4 Proliferating" = expression("CD4 Proliferating"))
+
+
+lvl_8 <- c(
+  "CD8 TN",
+  "CD8 TM",
+  "CD8 Tc1DM",
+  "CD8 TCTLDM",
+  "CD8 Tc1-CTLDM",
+  "CD8 Proliferating"
+)
+
+lab_8 <- c(
+  "CD8 TN"              = expression("CD8 TN"),
+  "CD8 TM"             = expression("CD8 TM"),
+  "CD8 Tc1DM"           = expression("CD8 " * T[c1] * DM),
+  "CD8 TCTLDM"           = expression("CD8 " * T[CTL] * DM),
+  "CD8 Tc1-CTLDM"       = expression("CD8 " * T[c1*"-"*CTL] * DM),
+  "CD8 Proliferating"   = expression("CD8 Proliferating")
+)
+
+lvl_4 <- c(
+  "CD4 TN",
+  "CD4 TSM",
+  "CD4 THDM",
+  "CD4 TH1DM",
+  "CD4 TCTLDM",
+  "CD4 Regulatory",
+  "CD4 Proliferating")
+
+lab_4 <- c(
+  "CD4 TN"            = expression("CD4 TN"),
+  "CD4 TSM"           = expression("CD4 TSM"),
+  "CD4 THDM"          = expression("CD4 " * T[H] * DM),
+  "CD4 TH1DM"         = expression("CD4 " * T[H1] * DM),
+  "CD4 TCTLDM"        = expression("CD4 " * T[CTL] * DM),
+  "CD4 Regulatory"    = expression("CD4 " * T[reg]),
+  "CD4 Proliferating" = expression("CD4 Proliferating"))
+
+
+lvl <- c(
+  "CD4 TN",
+  "CD4 TSM",
+  "CD4 THDM",
+  "CD4 TH1DM",
+  "CD4 TCTLDM",
+  "CD4 Regulatory",
+  "CD8 TN",
+  "CD8 TM",
+  "CD8 Tc1DM",
+  "CD8 TCTLDM",
+  "CD8 Tc1-CTLDM")
+
+lab <- c(
+  "CD4 TN"            = expression("CD4 TN"),
+  "CD4 TSM"           = expression("CD4 TSM"),
+  "CD4 THDM"          = expression("CD4 " * T[H] * DM),
+  "CD4 TH1DM"         = expression("CD4 " * T[H1] * DM),
+  "CD4 TCTLDM"        = expression("CD4 " * T[CTL] * DM),
+  "CD4 Regulatory"    = expression("CD4 " * T[reg]),
+  "CD8 TN"              = expression("CD8 TN"),
+  "CD8 TM"             = expression("CD8 TM"),
+  "CD8 Tc1DM"           = expression("CD8 " * T[c1] * DM),
+  "CD8 TCTLDM"           = expression("CD8 " * T[CTL] * DM),
+  "CD8 Tc1-CTLDM"       = expression("CD8 " * T[c1*"-"*CTL] * DM)
+)
+```
+
+#----SCENIC DEG Identifies TRM related GRNs----
+## DEG
+```{r}
+Idents(Tc_8) <- "Tissue"
+
+AUC_Unstable <- FindMarkers(Tc_8, assay="AUC", slot = "scale.data",
+      logfc.threshold = 0.2,
+      ident.1 = "Unstable",
+      ident.2 = "Blood",
+      test.use = "MAST",
+      only.pos = F)
+
+AUC_Unstable <- subset(AUC_Unstable, p_val_adj < 0.05)
+
+AUC_Stable <- FindMarkers(Tc_8, assay="AUC", slot = "scale.data",
+      logfc.threshold = 0.2,
+      ident.1 = "Stable",
+      ident.2 = "Blood",
+      test.use = "MAST",
+      only.pos = F)
+
+AUC_Stable <- subset(AUC_Stable, p_val_adj < 0.05)
+
+## 1. Up-regulated (avg_log2FC > 0.25 in BOTH comparisons)
+up_unstable <- subset(AUC_Unstable, avg_log2FC > 0 & p_val_adj < 0.05)
+up_stable   <- subset(AUC_Stable,   avg_log2FC > 0 & p_val_adj < 0.05)
+
+common_up_genes <- intersect(rownames(up_unstable), rownames(up_stable))
+
+common_up <- data.frame(
+  gene            = common_up_genes,
+  logFC_Unstable  = AUC_Unstable[common_up_genes, "avg_log2FC"],
+  logFC_Stable    = AUC_Stable[common_up_genes,   "avg_log2FC"],
+  group = "up"
+)
+
+## 2. Down-regulated (avg_log2FC < -0.25 in BOTH comparisons)
+down_unstable <- subset(AUC_Unstable, avg_log2FC < 0 & p_val_adj < 0.05)
+down_stable   <- subset(AUC_Stable,   avg_log2FC < 0 & p_val_adj < 0.05)
+
+common_down_genes <- intersect(rownames(down_unstable), rownames(down_stable))
+
+common_down <- data.frame(
+  gene            = common_down_genes,
+  logFC_Unstable  = AUC_Unstable[common_down_genes, "avg_log2FC"],
+  logFC_Stable    = AUC_Stable[common_down_genes,   "avg_log2FC"],
+  group = "down"
+)
+
+AUC <- rbind(common_up, common_down)
+AUC$gene_name <- gsub("\\(\\+\\)", "", AUC$gene)
+
+established_upregulons <- intersect(AUC$gene_name, genes_2plus)
+established_upregulons
+
+
+```
+
+```{r}
+Tc_8$Tissue <- factor(Tc_8$Tissue, levels = c("Blood", "Stable", "Unstable"))
+
+Idents(Tc_8) <- "Tissue"
+genes <- paste0(c("BHLHE40", "IRF4", "DDIT3", "FOS", "EOMES", "TBX21", "KLF2", "TCF7"), "(+)")
+
+ereg <- VlnPlot(Tc_8, genes, stack = T, fill.by = "ident", assay = "AUC", cols = cols$Tissue, y.max = 3) + 
+  geom_boxplot(width = 0.1, outlier.shape = NA) +
+  NoLegend() +
+  theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times", size = txt_pt),
+    axis.text.x  = element_text(angle = 0, size = txt_pt),
+    axis.text.y  = element_text(angle = 0, size = txt_pt),
+    axis.title.y = element_text(size = 0),
+    plot.margin  = margin(1, 1, 1, 1),
+    plot.title   = element_text(hjust = 0.5),
+    plot.subtitle= element_text(hjust = 0.5),
+    legend.position = "bottom",
+    legend.title    = element_blank(),
+    legend.justification = "centre",
+    strip.text.x = element_text( angle = 0, hjust = 0.5, vjust = 0)) & NoLegend()
+
+svglite("../docs/assets/04-Figure-4/PB_ereg.svg", width = 8, height = 3)
+ereg
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/PB_ereg.svg")
+```
+
+#----TRM GSS----
+```{r}
+Tc_8 <- UCell::AddModuleScore_UCell(Tc_8, features = Gene_Sets, w_neg = 1, maxRank = 2000)
+
+groups <- paste0(names(Gene_Sets), "_UCell")
+
+score_cols <- grep("_UCell", colnames(Tc_8@meta.data), value = TRUE)
+Tc_8$TRM_Avg_UCell <- rowMeans(Tc_8@meta.data[, score_cols], na.rm = TRUE)
+```
+
+## Blood vs Stable vs Unstable Vln
+```{r}
+score_cols2 <- grep("_UCell", colnames(Tc_8@meta.data), value = TRUE)
+
+Idents(Tc_8) <- "PB"
+TRM_signature_Vln <- VlnPlot(Tc_8, score_cols2[5:9], stack = T, fill.by = "ident", cols = cols$Tissue, y.max = 3) + 
+  geom_boxplot(width = 0.1, outlier.shape = NA) +
+  NoLegend() +
+  theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times", size = txt_pt),
+    axis.text.x  = element_text(angle = 0,  size = txt_pt),
+    axis.text.y  = element_text(angle = 0, size = txt_pt),
+    axis.title.y = element_text(size = 0),
+    plot.margin  = margin(1, 1, 1, 1),
+    plot.title   = element_text(hjust = 0.5),
+    plot.subtitle= element_text(hjust = 0.5),
+    legend.position = "bottom",
+    legend.title    = element_blank(),
+    legend.justification = "centre",
+    strip.text.x = element_text( angle = 0, hjust = 0.5, vjust = 0)) & NoLegend()
+
+svglite("../docs/assets/04-Figure-4/Vln_TRM.svg", width = 7.5, height = 4)
+TRM_signature_Vln
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/Vln_TRM.svg")
+```
+
+## Feature Plot
+```{r}
+t_common <- theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    axis.text.x  = element_text(size = txt_pt),
+    axis.text.y  = element_text(size = txt_pt),
+    axis.title.x = element_text(size = txt_pt),
+    axis.title.y = element_text(size = txt_pt),
+    title = element_text(size = txt_pt, face = "plain"),
+    plot.margin  = margin(1, 1, 1, 1),
+    plot.title = element_text(hjust = 0.5, face = "plain"),
+    plot.subtitle = element_text(hjust = 0.5, face = "plain"),
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.text  = element_text(size = 9, angle = 90),
+    legend.key.height = unit(3, "mm"),
+    legend.key.width  = unit(3, "mm"),
+    legend.spacing.y  = unit(1, "mm"),
+    legend.margin     = margin(t = 0, r = 0, b = 0, l = 0),
+    legend.justification = "centre")
+
+a <- FeaturePlot(Tc_8, features = "Mackay_2016_UCell", order = TRUE, pt.size = 0.5) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.2, NA), breaks = c(0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35)) & labs(color = "Expression") & labs(
+    title = "Mackay et al., \n 2016") & t_common
+
+b <- FeaturePlot(Tc_8, features = "Jaiswal_2022_UCell", order = TRUE, pt.size = 0.5) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.15, NA), breaks = c(0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35)) & labs(color = "Expression") & labs(
+    title = "Jaiswal et al., \n 2022") & t_common
+
+c <- FeaturePlot(Tc_8, features = "Poon_2023_UCell", order = TRUE, pt.size = 0.5) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.05, NA),  breaks = c(0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35)) & labs(color = "Expression")  & labs(
+    title = "Poon et al., \n 2023") & t_common
+
+d <- FeaturePlot(Tc_8, features = "Scott_2025_UCell", order = TRUE, pt.size = 0.5) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.05, NA),  breaks = c(0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35)) & labs(color = "Expression")  & labs(
+    title = "Scott et al., \n 2025") & t_common
+
+e <- FeaturePlot(Tc_8, features = "TRM_Avg_UCell", order = TRUE, pt.size = 0.5) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.1, NA), breaks = c(0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35)) & labs(color = "Expression")  & labs(
+    title = "Average Score") & t_common
+
+svglite("../docs/assets/04-Figure-4/TRM_GSS_Feature.svg", width = 8, height = 4)
+plot_grid(a,b,c,d,e,
+  align = "hv", axis = "tbrl",
+  ncol = 5)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/TRM_GSS_Feature.svg")
+```
+
+
+## Plaque Core Signature per Cluster ----
+```{r}
+Idents(Tc_8) <- "celltype"
+TRM_BYtissuescore <- VlnPlot(Tc_8, c("TRM_Avg_UCell"), fill.by = "ident", cols = cols$Tissue[c(2,5)], pt.size = 0, split.by = "PB") + NoLegend() + labs(
+    title = expression("Avg."~T[R]~"M signature score"),
+    subtitle = "") + ylab(expression("UCell Score"))  +
+  theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    axis.text.x = element_text(size = txt_pt),
+    axis.text.y = element_text(size = txt_pt),
+    axis.title.x = element_text(size = 0),
+    axis.title.y = element_text(size = txt_pt),
+    plot.title = element_text(hjust = 0.5, size = txt_pt)) + geom_boxplot(width = 0.1, position = position_dodge(width = 0.9), outliers = F)
+
+
+svglite("../docs/assets/04-Figure-4/Main_TRM_Feature.svg", width = 5, height = 3)
+plot_grid(e,TRM_BYtissuescore,
+  align = "hv", axis = "tbrl",
+  ncol = 2)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/Main_TRM_Feature.svg")
+```
+
+#----What cells are TRM----
+```{r}
+DefaultAssay(Tc_8) <- "RNA"
+#Assign quartile ratings
+q <- quantile(Tc_8$TRM_Avg_UCell, probs = c(0.25, 0.75), na.rm = TRUE)
+
+# Create a new metadata column with TRMhi / TRMint / TRMlo classification
+Tc_8$TRM_group <- cut(
+  Tc_8$TRM_Avg_UCell,
+  breaks = c(-Inf, q[1], q[2], Inf),
+  labels = c("TRMlo", "TRMint", "TRMhi"),
+  include.lowest = TRUE
+)
+```
+
+#----What drives TRM signature? - General----
+```{r}
+p8 <- subset(Tc_8, PB == "Plaque")
+
+  # subset to this celltype and keep only TRMhi / TRMlo
+  sub <- subset(
+    p8,
+    subset = TRM_group %in% c("TRMhi", "TRMlo"))
+
+  Idents(sub) <- "TRM_group"
+
+  res <- FindAllMarkers(sub, assay="RNA",
+      logfc.threshold = 0.25,
+      min.pct = 0.25,
+      test.use = "MAST",
+      only.pos = F)
+
+  res <- res[res$p_val_adj < 0.05, ]
+```
+
+## Identification of signature genes vs. non-signature genes
+```{r}
+sig_genes <- res[res$gene %in% genes_2plus, ]
+missing_genes <- setdiff(genes_2plus, res$gene)
+missing_genes_df <- data.frame(gene = missing_genes)
+
+sig_genes_absent <- subset(genes_2plus, !(genes_2plus %in% res$gene))
+NOTsig_genes <- res[!c(res$gene %in% genes_2plus), ]
+down <- subset(res, cluster == "TRMlo" & avg_log2FC >0.25)
+```
+
+```{r}
+features_up_signature <- c("NR4A1", "JUNB", "FOS", "NR4A3", "JUN", "KLF6", "NR4A2","CD69", "BHLHE40", "ALDOA")
+features_up_notsig <- c("FOSB", "LMNA", "RGCC", "TNFSF9", "CXCR4", "MCL1", "VIM", "TGFB1", "GPX4", "ATF3", "AREG", "GATA3", "TFRC")
+features_down <- c("TXNIP", "KLRG1", "ITGB1", "ITGAL", "ITGA4", "ZAP70", "CCL5", "S1PR1", "FGFBP2")
+
+genes <- c(features_up_notsig, features_up_signature, features_down)
+
+
+# --- Subset to genes of interest ---
+df <- res[res$gene %in% genes, ]
+
+mat <- acast(
+  df, cluster ~ gene,
+  value.var = "avg_log2FC",
+  fun.aggregate = mean, na.rm = TRUE
+)
+
+
+stopifnot("TRMhi" %in% rownames(mat), "TRMlo" %in% rownames(mat))
+trmhi <- mat["TRMhi", ]
+
+TRM_up_notsig_ordered    <- names(sort(trmhi[features_up_notsig],    decreasing = TRUE))
+TRM_up_signature_ordered <- names(sort(trmhi[features_up_signature], decreasing = TRUE))
+TRM_down_ordered         <- names(sort(trmhi[features_down],         decreasing = FALSE))  # most negative first
+
+# --- Final order (Signature Up → Other Up → Down) ---
+genes_ordered <- c(TRM_up_notsig_ordered, TRM_up_signature_ordered, TRM_down_ordered)
+genes_ordered <- genes_ordered[genes_ordered %in% colnames(mat)]  # drop any missing safely
+
+# --- Reindex matrix columns ---
+mat <- mat[c("TRMhi", "TRMlo"), genes_ordered, drop = FALSE]
+
+group_levels <- c("putative", "established", "down")
+
+col_groups <- dplyr::case_when(
+  genes_ordered %in% features_up_notsig    ~ "putative",
+  genes_ordered %in% features_up_signature ~ "established",
+  genes_ordered %in% features_down         ~ "down",
+  TRUE                                     ~ NA_character_
+)
+
+col_groups <- factor(col_groups, levels = group_levels)
+
+
+column_titles <- c(
+  expression(
+  atop(
+    "Putative Plaque", T[RM] * " Genes")),
+  expression(
+  atop(
+    "Established", T[RM] * " Genes")),
+  expression(
+  atop(
+    "Genes down in", T[RM] * "-hi")))
+
+# --- Colours ---
+col_fun <- colorRamp2(c(-1.5, 0, 1.5), c("blue", "white", "red"))
+
+row_labels <- c(
+  expression(T[RM]-hi),
+  expression(T[RM]-lo)
+)
+
+ht <- Heatmap(
+  mat,
+  height = nrow(mat) * unit(5, "mm"),
+  width  = ncol(mat) * unit(5, "mm"),
+  name   = "avg_log2FC",
+  col    = col_fun,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  column_title = column_titles,
+  show_row_names = TRUE,
+  row_labels = row_labels,
+  row_names_side = "left",
+  show_column_names = TRUE,
+  column_split = col_groups,
+  row_names_gp = gpar(fontsize = txt_pt, rot = 45),
+  column_names_gp = gpar(fontsize = txt_pt, rot = 45),
+  column_title_gp =  gpar(fontsize = txt_pt),
+  border = TRUE,
+  show_column_dend = FALSE,
+  heatmap_legend_param = list(
+    title = "Expression",
+    direction = "horizontal",
+    position = "center",
+    title_gp = gpar(fontsize = txt_pt),
+    labels_gp = gpar(fontsize = txt_pt, rot = 0)
+  )
+)
+
+svglite("../docs/assets/04-Figure-4/TRMhi_vs_lo.svg", width = 7, height = 3)
+draw(ht, heatmap_legend_side = "bottom", annotation_legend_side = "bottom")
+dev.off()
+knitr::include_graphics("../docs/assets/04-Figure-4/TRMhi_vs_lo.svg")
+```
+
+#---- Cluster Specific TRM Genes ----
+```{r}
+levels(Tc_8$celltype)
+
+groups <- c("CD8 TM","CD8 Tc1DM","CD8 TCTLDM")
+
+TRM_per_cluster <- lapply(groups, function(g){
+
+  # subset to this celltype and keep only TRMhi / TRMlo
+  sub <- subset(
+    Tc_8,
+    subset = celltype == g & TRM_group %in% c("TRMhi", "TRMlo")
+  )
+
+  Idents(sub) <- "TRM_group"
+
+  res_cluster <- FindMarkers(
+    sub,
+    ident.1 = "TRMhi",
+    ident.2 = "TRMlo",
+    assay = "RNA",
+    logfc.thres_clusterhold = 0.25,
+    min.pct = 0.25,
+    test.use = "MAST",
+    only.pos = FALSE
+  )
+  
+  res_cluster$gene <- rownames(res_cluster)
+
+  res_cluster[res_cluster$p_val_adj < 0.05, ]
+})
+
+names(TRM_per_cluster) <- groups
+
+# Extract up/down DEG lists
+up_list <- lapply(TRM_per_cluster, function(df) {
+  subset(df, avg_log2FC > 0.25)$gene
+})
+
+down_list <- lapply(TRM_per_cluster, function(df) {
+  subset(df, avg_log2FC < -0.25)$gene
+})
+
+common_up   <- Reduce(intersect, up_list)
+common_down <- Reduce(intersect, down_list)
+
+# helpful names
+names(TRM_per_cluster) <- groups   # if groups = c("CD8_Mem", ...)
+
+common_up
+
+## Make sure list elements are named by cluster
+groups <- c("CD8 TM","CD8 Tc1DM","CD8 TCTLDM")
+names(TRM_per_cluster) <- groups
+
+## 1. Combine into one long table
+all_deg <- imap_dfr(
+  TRM_per_cluster,
+  ~ {
+    df <- .x
+    # ensure a gene column exists
+    if (!"gene" %in% colnames(df)) {
+      df$gene <- rownames(df)
+    }
+    df$cluster <- .y
+    df
+  }
+)
+
+## 2. Annotate direction based on avg_log2FC
+all_deg <- all_deg %>%
+  mutate(direction = case_when(
+    avg_log2FC >  0.25 ~ "Up",
+    avg_log2FC < -0.25 ~ "Down",
+    TRUE               ~ "Other"
+  ))
+
+## 3. Commonly UP across all 3 clusters
+common_up <- all_deg %>%
+  dplyr::filter(direction == "Up") %>%
+  group_by(gene) %>%
+  dplyr::filter(n_distinct(cluster) == length(groups)) %>%  # pres_clusterent as Up in all 3
+  ungroup()
+
+## 4. Commonly DOWN across all 3 clusters
+common_down <- all_deg %>%
+  dplyr::filter(direction == "Down") %>%
+  group_by(gene) %>%
+  dplyr::filter(n_distinct(cluster) == length(groups)) %>%
+  ungroup()
+
+## Common UP genes, wide format
+common_up_wide <- common_up %>%
+  dplyr::select(gene, cluster, avg_log2FC, p_val_adj) %>%
+  pivot_wider(
+    names_from  = cluster,
+    values_from = c(avg_log2FC, p_val_adj),
+    names_glue  = "{.value}_{cluster}"
+  )
+common_up_wide$direction <- "common_up"
+
+## Common DOWN genes, wide format
+common_down_wide <- common_down %>%
+  dplyr::select(gene, cluster, avg_log2FC, p_val_adj) %>%
+  pivot_wider(
+    names_from  = cluster,
+    values_from = c(avg_log2FC, p_val_adj),
+    names_glue  = "{.value}_{cluster}"
+  )
+common_down_wide$direction <- "common_down"
+common_TRM_genes <- rbind(common_up_wide, common_down_wide)
+
+## Genes that are Up (TRMhi) in exactly ONE cluster
+unique_up <- all_deg %>%
+  dplyr::filter(direction == "Up") %>%
+  group_by(gene) %>%
+  dplyr::filter(n_distinct(cluster) == 1) %>%  # appears as Up in only 1 cluster
+  ungroup()
+
+## Split into a named list per cluster (for quick access)
+unique_up_list <- split(unique_up$gene, unique_up$cluster)
+
+unique_up_list
+# $CD8_Mem          -> genes Up only in CD8_Mem
+# $CD8_Cytokine     -> genes Up only in CD8_Cytokine
+# $CD8_Cytotoxic    -> genes Up only in CD8_Cytotoxic
+
+unique_up_wide <- unique_up %>%
+  dplyr::select(gene, cluster, avg_log2FC, p_val_adj) %>%
+  tidyr::pivot_wider(
+    names_from  = cluster,
+    values_from = c(avg_log2FC, p_val_adj),
+    names_glue  = "{.value}_{cluster}"
+  )
+
+unique_up_wide$direction <- "unique_up"
+
+## Genes that are Down (TRMlo) in exactly ONE cluster
+unique_down <- all_deg %>%
+  dplyr::filter(direction == "Down") %>%
+  group_by(gene) %>%
+  dplyr::filter(n_distinct(cluster) == 1) %>%
+  ungroup()
+
+## Split into a named list per cluster
+unique_down_list <- split(unique_down$gene, unique_down$cluster)
+
+unique_down_list
+# $CD8_Mem, $CD8_Cytokine, $CD8_Cytotoxic
+
+unique_down_wide <- unique_down %>%
+  dplyr::select(gene, cluster, avg_log2FC, p_val_adj) %>%
+  tidyr::pivot_wider(
+    names_from  = cluster,
+    values_from = c(avg_log2FC, p_val_adj),
+    names_glue  = "{.value}_{cluster}"
+  )
+
+unique_down_wide$direction <- "unique_down"
+
+TRM_gene_summary <- dplyr::bind_rows(
+  common_up_wide,
+  common_down_wide,
+  unique_up_wide,
+  unique_down_wide
+)
+
+```
+
+#---- Venn Diagram of Signature vs. not signatue genes-General----
+## Gene Overlap Between Clusters
+```{r}
+library(eulerr)
+
+## Which clusters to include
+groups <- c("CD8 TM","CD8 Tc1DM","CD8 TCTLDM")
+
+## Build list of genes Up in each cluster
+comparison_genes <- all_deg %>%
+  dplyr::filter(
+    direction == "Up",
+    p_val_adj < 0.05,
+    cluster %in% groups
+  ) %>%
+  group_by(cluster) %>%
+  summarise(genes = list(unique(gene)), .groups = "drop") %>%
+  { setNames(.$genes, .$cluster) }
+
+# --- Fit Euler  ---
+fit <- euler(comparison_genes)
+
+counts  <- fit$original.values
+percent <- round(100 * counts / sum(counts), 1)
+
+labels <- paste0(counts, "\n(", percent, "%)")
+
+# --- Plot ---
+plot <- plot(
+  fit,
+  fills = list(
+    fill = c("#e86e50",  "#20A73C","#e9b321")[seq_along(comparison_genes)],
+    alpha = 0.5
+  ),
+  labels = list(font = 2, cex = cex_base),
+  quantities = list(
+    labels = labels,
+    font   = 2,
+    cex    = cex_base
+  ),
+  edges = TRUE,
+  main  = ""
+)
+
+cols$celltype
+
+svglite("../docs/assets/04-Figure-4/TRM_sig_overlap.svg", width = 2.5, height = 2.5)
+plot
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/TRM_sig_overlap.svg")
+```
+
+
+## Gene Overlap - Plaque TRM vs. Existing Signature Genes
+```{r}
+Core_Established <- genes_2plus
+Plaque_TRM <- subset(TRM_gene_summary, direction == "common_up")$gene
+
+gene_comp <- list(
+  Core_Established = Core_Established,
+  Plaque_TRM       = Plaque_TRM
+)
+
+# Fit model
+fit <- euler(gene_comp)
+
+# Extract region counts
+counts  <- fit$original.values
+percent <- round(100 * counts / sum(counts), 1)
+
+# Labels as "count (percent%)"
+labels <- paste0(counts, "\n(", percent, "%)")
+
+plot(
+  fit,
+  fills = list(fill = c("#1b9e77", "#d95f02"), alpha = 0.5),
+  labels = list(font = 2, cex = 1.4),
+  quantities = list(
+    labels = labels,
+    font   = 2,
+    cex    = 1.1
+  ),
+  edges = TRUE,
+  main = "")
+
+
+common_TRM_genes <- intersect(Core_Established,Plaque_TRM)
+```
+
+#---- Assign Plaque TRM based on new Core Signature ----
+Assign TRM based on the 169 common genes. 
+## new core signature
+```{r}
+up <- subset(TRM_gene_summary, direction == "common_up")
+up$gene2 <- paste0(up$gene, "+")
+down <- subset(TRM_gene_summary, direction == "common_down")
+down$gene2 <- paste0(down$gene, "-")
+
+New_Set <- list()
+#New_Set[["Plaque_TRM"]] <- c(paste0(up$gene, "+"), paste0(down$gene, "-"))
+
+New_Set[["Plaque_TRM"]] <- up$gene
+New_Set[["Plaque_TRM_updown"]] <- c(up$gene2, down$gene2)
+New_Set[["common_TRM_up"]] <- c(common_TRM_genes)
+
+Tc_8 <- UCell::AddModuleScore_UCell(Tc_8, features = New_Set, w_neg = 1, maxRank = 2000)
+```
+
+```{r}
+DefaultAssay(Tc_8) <- "RNA"
+#Assign quartile ratings
+q <- quantile(Tc_8$Plaque_TRM_UCell, probs = c(0.25, 0.75), na.rm = TRUE)
+
+# Create a new metadata column with TRMhi / TRMint / TRMlo classification
+Tc_8$Plaque_TRM <- cut(
+  Tc_8$Plaque_TRM_UCell,
+  breaks = c(-Inf, q[1], q[2], Inf),
+  labels = c("TRMlo", "TRMint", "TRMhi"),
+  include.lowest = TRUE
+)
+```
+
+#---- Plaque Core Signature FeaturePlot ----
+```{r}
+Feat <- FeaturePlot(Tc_8, features = "Plaque_TRM_UCell", order = TRUE) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.25, NA), breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6)) & labs(color = "Expression") & t_common & labs(
+    title = expression("Plaque"~T[RM]~"signature"),
+    subtitle = ""
+  )
+
+svglite("../docs/assets/04-Figure-4/plaque_TRM_feature.svg", width = 3, height = 3)
+Feat
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/plaque_TRM_feature.svg")
+```
+
+#----TRM hi vs low vs int HM ----
+```{r}
+Idents(Tc_8) <- "celltype"
+
+sc.Avg <- AverageExpression(
+  subset(
+    Tc_8,
+    subset = !(celltype %in% c("CD8 TN", "CD8 Tc1-CTLDM", "CD8 Proliferating")) & !(Plaque_TRM %in% "TRMint")
+  ),
+  assays = "RNA",
+  return.seurat = TRUE,
+  group.by = c("celltype", "Plaque_TRM")
+)
+```
+
+```{r}
+Heatmap_Genes <- c("NR4A1","NR4A2", "JUNB","EGR1", "CD69", "RGS1", "ATF4", "BHLHE40", "RGCC", "FOSB", "TFRC", "CXCR4", "VIM", "FTH1")
+
+# Expression matrix from sc.Avg
+mtx <- sc.Avg@assays$RNA@layers$scale.data |> as.data.frame()
+rownames(mtx) <- rownames(sc.Avg@assays$RNA)
+colnames(mtx) <- colnames(sc.Avg@assays$RNA)
+
+mtx_sub <- mtx[rownames(mtx) %in% Heatmap_Genes, , drop = FALSE]
+mtx_sub <- mtx_sub[match(Heatmap_Genes, rownames(mtx_sub)), , drop = FALSE]  # preserve gene order
+
+# Meta for columns + FORCE celltype ordering
+
+# 1) desired order from Seurat object
+celltype_levels <- levels(Tc_8$celltype)   # or: levels(Idents(Tc_8)) if that's what you use
+
+# 2) meta for heatmap columns
+meta <- sc.Avg@meta.data[colnames(mtx_sub), , drop = FALSE]
+meta$celltype <- as.character(meta$celltype)
+
+# 3) apply Tc_8 ordering (keep only levels that actually appear in meta)
+celltype_levels_use <- celltype_levels[celltype_levels %in% unique(meta$celltype)]
+meta$celltype <- factor(meta$celltype, levels = celltype_levels_use)
+
+# (optional but recommended) if anything didn't match, it becomes NA
+stopifnot(!any(is.na(meta$celltype)))
+
+# Ensure TEX labels are consistent (Other vs TX)
+
+meta$Plaque_TRM <- as.character(meta$Plaque_TRM)
+meta$Plaque_TRM <- factor(meta$Plaque_TRM, levels = c("TRMlo", "TRMhi"))
+
+
+# Order columns: Other first, then TX; within each, by celltype (Tc_8 order)
+ord <- with(meta, order(Plaque_TRM, celltype))
+mtx_sub <- mtx_sub[, ord, drop = FALSE]
+meta    <- meta[ord, , drop = FALSE]
+
+# Colours
+trm_cols <- c("TRMlo" = "lightblue", "TRMhi" = "pink")
+
+# cols$celltype must be a NAMED vector: names are celltype labels, values are colours
+celltype_cols <- cols$celltype[celltype_levels_use]
+stopifnot(!any(is.na(celltype_cols)))  # catches missing names in cols$celltype
+
+top_anno <- HeatmapAnnotation(
+  TEX      = meta$Plaque_TRM,
+  celltype = meta$celltype,
+  col = list(
+    TEX      = trm_cols,
+    celltype = celltype_cols
+  ),
+  show_annotation_name = FALSE,
+  annotation_height = unit(c(3, 3), "mm")
+)
+
+col_fun <- colorRamp2(c(-0.5, 0, 0.5), c("black", "#21918c", "#fde725"))
+heatmap_legend_params <- list(
+  legend_direction = "horizontal",
+  legend_position = "center",
+  legend_width = unit(3, "cm"),
+  labels_gp = gpar(fontsize = 10),
+  labels_rot = 0,
+  title = "",
+  title_gp = gpar(box_fill = "grey"),
+  at = c(-1, 0, 1)
+)
+
+hm <- Heatmap(
+  mtx_sub,
+  height = nrow(mtx_sub) * unit(5, "mm"),
+  width  = ncol(mtx_sub) * unit(5, "mm"), 
+  col = col_fun,
+  border = TRUE,
+  show_row_names = TRUE,
+  row_names_gp = gpar(fontsize = 10, fontfamily = "Times"),
+  row_names_side = "left",
+  top_annotation = top_anno,
+  column_split = meta$Plaque_TRM,
+  cluster_column_slices = FALSE,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  show_column_names = FALSE,
+  show_row_dend = FALSE,
+  heatmap_legend_param = heatmap_legend_params
+)
+
+svglite::svglite("../docs/assets/04-Figure-4/TRM_by_celltype_HM.svg", width = 4, height = 5)
+draw(hm, heatmap_legend_side = "bottom")
+dev.off()
+knitr::include_graphics("../docs/assets/04-Figure-4/TRM_by_celltype_HM.svg")
+```
+
+
+```{r}
+df_long <- subset(TRM_gene_summary, direction == "common_up") %>%
+  pivot_longer(
+    cols = matches("^(avg_log2FC|p_val_adj)_"),
+    names_to = c(".value", "comparison"),
+    names_pattern = "(avg_log2FC|p_val_adj)_(.*)"
+  )
+
+df <- df_long %>%
+  group_by(gene) %>%
+  summarise(
+    avg_log2FC   = median(avg_log2FC,   na.rm = TRUE),
+    p_val_adj    = median(p_val_adj,    na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    neglog10_p = -log10(p_val_adj)
+  ) %>%
+  arrange(desc(avg_log2FC)) %>%
+  mutate(rank = row_number())
+
+top_labels <- df %>%
+  dplyr::filter(gene %in% c("NR4A3", "NR4A2", "NR4A1", "JUNB", "FOS", "RGCC", "CD69", "BHLHE40", "CXCR4", "KLF6", "TFRC"))
+
+ranked <- ggplot(df, aes(x = rank, y = avg_log2FC)) +
+  geom_point(aes(color = neglog10_p), size = 1.5, alpha = 0.8) +
+
+  geom_point(
+    data = top_labels,
+    aes(color = neglog10_p, fill = neglog10_p),
+    size = 4, shape = 21, stroke = 1, colour = "black"
+  ) +
+  geom_text_repel(
+    data = top_labels,
+    aes(label = gene, color = neglog10_p),
+    size = txt_mm,
+    direction = "y",
+    nudge_x = 15,
+    hjust = 0,
+    segment.size = 0.3,
+    segment.color = "black",
+    box.padding = 0.2,
+    point.padding = 0.2,
+    max.overlaps = Inf,
+    show.legend = FALSE
+  ) +
+  scale_color_gradientn(
+    colours = c("pink", "orange", "red", "black"),
+    name = expression(-log[10](p[adj]))
+  ) +
+  scale_fill_gradientn(
+    colours = c("pink", "orange", "red", "black"),
+    guide = "none"
+  ) +
+  labs(
+    x = "Rank",
+    y = "Median Avg. Log2FC",
+  title = expression(
+  atop(
+    "Core Plaque " * T[RM] * " Signature Genes",
+    "from " * T[RM] * "-hi vs " * T[RM] * "-lo per cluster"
+  ))) +
+  ggpubr::theme_pubr(base_size = txt_pt) +
+  theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    axis.line = element_line(colour = "black", linewidth = 0.4),
+    axis.ticks = element_line(linewidth = 0.4),
+    axis.text = element_text(size = txt_pt, colour = "black"),
+    axis.title = element_text(size = txt_pt, colour = "black", hjust = 0.5, vjust = -0.5),
+    plot.title = element_text(size = txt_pt, hjust = 0.5, face = "plain"),
+    legend.text  = element_text(size = 9, angle = 90),
+    legend.key.height = unit(3, "mm"),
+    legend.key.width  = unit(3, "mm"),
+    legend.spacing.y  = unit(1, "mm"),
+    legend.margin     = margin(t = 0, r = 0, b = 0, l = 0),
+    legend.justification = "centre",
+    legend.position = "bottom")
+
+svglite::svglite("../docs/assets/04-Figure-4/Plaque_TRM_Rank.svg", width = 4, height = 4)
+ranked
+dev.off()
+knitr::include_graphics("../docs/assets/04-Figure-4/Plaque_TRM_Rank.svg")
+```
+
+#---- Plaque Core Signature per Cluster ----
+```{r}
+Idents(Tc_8) <- "celltype"
+plaque_TRM_BYtissuescore <- VlnPlot(Tc_8, c("Plaque_TRM_UCell"), fill.by = "ident", cols = cols$Tissue[c(2,5)], pt.size = 0, split.by = "PB") + NoLegend() + labs(
+    title = expression("Core Plaque"~T[R]~"M signature"),
+    subtitle = "") + ylab(expression("UCell Score"))  +
+  theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    axis.text.x = element_text(size = txt_pt),
+    axis.text.y = element_text(size = txt_pt),
+    axis.title.x = element_text(size = 0),
+    axis.title.y = element_text(size = txt_pt),
+    plot.title = element_text(hjust = 0.5, size = txt_pt))
+
+#geom_boxplot(width = 0.1, position = position_dodge(width = 0.9), outliers = F)
+svglite("../docs/assets/04-Figure-4/plaque_TRM_tissue_celltypescore.svg", width = 4, height = 3)
+plaque_TRM_BYtissuescore
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/plaque_TRM_tissue_celltypescore.svg")
+```
+
+
+
+#---- Plaque TRM signature per TRM group quintiles ----
+```{r}
+Idents(Tc_8) <- "Plaque_TRM"
+plaque_TRM_tissuescore_quint <- VlnPlot(Tc_8, c("Plaque_TRM_UCell"), fill.by = "ident", cols = cols$Tissue[c(2:4)], pt.size = 0, split.by = "Tissue") + NoLegend() + labs(
+    title = expression("Core Plaque"~T[R]~"M signature"),
+    subtitle = ""
+  ) + geom_boxplot(width = 0.1, position = position_dodge(width = 0.9), outliers = F) + ylab(expression("UCell Score"))  +
+  theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    axis.text.x = element_text(size = txt_pt),
+    axis.text.y = element_text(size = txt_pt),
+    axis.title.x = element_text(size = 0),
+    axis.title.y = element_text(size = txt_pt),
+    plot.title = element_text(hjust = 0.5, size = txt_pt+2)) 
+
+svglite("../docs/assets/04-Figure-4/plaque_TRM_celltypescore_byTRM.svg", width = 3, height = 3)
+plaque_TRM_tissuescore_quint
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/plaque_TRM_celltypescore_byTRM.svg")
+```
+
+```{r}
+saveRDS(Tc_8, "../objects/04-Figure-4/Tc_8.rds")
+saveRDS(Gene_Sets, "../objects/04-Figure-4/Gene_Sets.rds")
+saveRDS(Clean_Sets, "../objects/04-Figure-4/Clean_Gene_Sets_UpOnly.rds")
+saveRDS(New_Set, "../objects/04-Figure-4/Plaque_TRM_Set.rds")
+```

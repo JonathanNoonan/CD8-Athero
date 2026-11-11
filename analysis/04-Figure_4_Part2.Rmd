@@ -1,0 +1,553 @@
+---
+title: "Figure 4 - Part 2"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
+site: workflowr::wflow_site
+output:
+  workflowr::wflow_html:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+# Setup {.tabset .tabset-pills}
+## Load the libraries
+```{r message=FALSE, warning=FALSE}
+## Package Management
+set.seed(01122023)
+
+suppressPackageStartupMessages({
+## Key
+library(Seurat)
+library(SeuratWrappers)
+library(scRepertoire)
+library(MAST)
+
+## Wrangling
+library(stringr)
+library(tidyr)
+library(dplyr)
+library(nichenetr)
+
+## Visualization
+library(pals)
+library(DT)
+library(ggplot2)
+library(ggpubr)
+library(RColorBrewer)
+library(circlize)
+library(ComplexHeatmap)
+library(ggvenn)
+library(ggalluvial)
+library(stringr)
+library(readr)
+library(gridExtra)
+library(tibble)
+library(enrichR)
+library(EnhancedVolcano)
+library(openxlsx)
+library(svglite)
+library(eulerr)
+library(cowplot)
+})
+```
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = F, message = F, dpi = 300)
+functions <- list.files("../../../../../My_Analysis/code/", pattern = "\\.R$", full.names = TRUE)
+invisible(lapply(functions, source))
+```
+
+## Set up output directories
+```{r}
+dir.create("../docs/assets/04-Figure-4")
+```
+
+## Design Elements
+```{r}
+# Create vector colors
+cols <- readRDS("../docs/assets/00-DesignElements/DesignElements.rds")
+```
+
+```{r, fig.width=20}
+Tc_8 <- readRDS("../objects/Tc_8.rds")
+sc <- readRDS("../objects/Poon_integrated.rds")
+
+table(sc$Tissue)
+sc@assays$hto <- NULL
+sc@assays$integrated <- NULL
+sc@assays$cite <- NULL
+sc@assays$AUC <- NULL
+
+gc()
+```
+
+```{r}
+cols$TRM_Tissue <-  c(
+  "Spleen"      = "#E69F00",  # orange
+  "Bone Marrow" = "#56B4E9",  # sky blue
+  "Lymph Node"  = "#009E73",  # bluish green
+  "Lung"        = "#0072B2",  # blue
+  "Skin"        = "#CC79A7",  # reddish purple
+  "Jejunum"     = "#D55E00",  # vermillion
+  "Plaque"      = "#D7A2FF"   # neutral grey
+)
+
+
+cols$TRM <-  c(
+  "CD8 TDRM"      = "#7094cd",  # orange
+  "CD8 Tc1DRM" = "#ef5552",  # sky blue
+  "CD8 TCTLDM"  = "#e96e50",  # bluish green
+  "CD8 Tc1DM"        = "#e9b322",  # blue
+  "CD8 TN"        = "#4db6ac") # reddish purple
+
+Idents(sc) <- "celltype_l2"
+
+```
+
+## label levels
+```{r}
+lvl_8 <- c(
+  "CD8 TN",
+  "CD8 TM",
+  "CD8 Tc1DM",
+  "CD8 TCTLDM",
+  "CD8 Tc1-CTLDM",
+  "CD8 TDTRM",
+  "CD8 TC1DRM",
+  "CD8 TCTLDRM",
+  "CD8 Proliferating"
+)
+
+lab_8 <- c(
+  "CD8 TN"              = expression("CD8 TN"),
+  "CD8 TM"             = expression("CD8 TM"),
+  "CD8 Tc1DM"           = expression("CD8 " * T[c1] * DM),
+  "CD8 TCTLDM"           = expression("CD8 " * T[CTL] * DM),
+  "CD8 Tc1-CTLDM"       = expression("CD8 " * T[c1*"-"*CTL] * DM),
+  "CD8 Proliferating"   = expression("CD8 Proliferating"),
+    # DRM states (R subscript)
+  "CD8 TDRM"         = expression("CD8 " * T[D*D[R]*M]),
+  "CD8 Tc1DRM"        = expression("CD8 " * T[c1] * D[R] * M))
+```
+
+## Text base
+```{r}
+pt_to_mm <- function(pt) pt / 2.95
+txt_pt <- 10
+txt_mm <- txt_pt / 2.95
+cex_base <- txt_pt / 12
+```
+
+```{r}
+sets <- readRDS("../output/04-Figure-4/Plaque_TRM_Set.rds")
+sc <- UCell::AddModuleScore_UCell(sc, features = sets, w_neg = 1, maxRank = 2000)
+```
+
+#----DimPlots----
+```{r}
+## Clusters
+Idents(sc) <- "mnn_clusters"
+svglite("../docs/assets/04-Figure-4/TRM_UMAP_cluster.svg", width = 4, height = 4)
+DimPlot(sc, pt.size = 1, ncol = 1) & NoAxes() & NoLegend() & theme(aspect.ratio = 1, strip.text = element_blank())
+invisible(dev.off())
+
+knitr::include_graphics("../docs/assets/04-Figure-4/TRM_UMAP_cluster.svg")
+
+## By Tissue
+## Clusters
+Idents(sc) <- "Tissue"
+svglite("../docs/assets/04-Figure-4/TRM_UMAP_Tissue.svg", width = 4, height = 4)
+DimPlot(sc, pt.size = 0.25, cols = cols$TRM_Tissue) & NoAxes() & theme(aspect.ratio = 1, strip.text = element_blank())
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/TRM_UMAP_Tissue.svg")
+
+```
+
+
+#----TRM Average GSS----
+```{r}
+t_common <- theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    axis.text.x  = element_text(size = 12),
+    axis.text.y  = element_text(size = 12),
+    axis.title.x = element_text(size = 20),
+    axis.title.y = element_text(size = 20),
+    plot.margin  = margin(1, 1, 1, 1),
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.text  = element_text(size = 10, angle = 90),
+    legend.justification = "centre"
+    )
+
+Feature_GSS <- FeaturePlot(sc, features = "TRM_Avg_UCell", order = TRUE) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.1, NA), breaks = c(0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35)) & labs(color = "Expression") & t_common & labs(
+    title = expression(Average~T[RM]~Score))
+
+svglite("../docs/assets/04-Figure-4/TRM_AvgScore.svg", width = 4, height = 4)
+Feature_GSS
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/TRM_AvgScore.svg")
+
+```
+
+#----TRM Tissue DEG----
+## Calculate
+```{r}
+## TRM hi
+  sub <- subset(
+    sc, TRM_group == "TRMhi")
+
+  Idents(sub) <- "Tissue"
+  
+  deg_trmhi <- FindAllMarkers(sub, assay="RNA",
+      logfc.threshold = 0.5,
+      min.pct = 0.25,
+      test.use = "MAST",
+      only.pos = T)
+  
+
+## Non TRM
+  sub <- subset(
+    sc, TRM_group != "TRMhi")
+
+  Idents(sub) <- "Tissue"
+  
+  deg_nontrmhi <- FindAllMarkers(sub, assay="RNA",
+      logfc.threshold = 0.5,
+      min.pct = 0.25,
+      test.use = "MAST",
+      only.pos = T)
+  
+
+# thresholds for calling "upregulated"
+lfc_cutoff  <- 0.5
+padj_cutoff <- 0.05
+
+final_table <- deg_trmhi %>%
+  # keep only columns we need and suffix them
+  transmute(
+    gene,
+    cluster,
+    avg_log2FC_TRMhi = avg_log2FC,
+    p_val_adj_TRMhi  = p_val_adj
+  ) %>%
+  full_join(
+    deg_nontrmhi %>%
+      transmute(
+        gene,
+        cluster,
+        avg_log2FC_nonTRMhi = avg_log2FC,
+        p_val_adj_nonTRMhi  = p_val_adj
+      ),
+    by = c("gene", "cluster")
+  ) %>%
+  mutate(
+    # call "up" in each table using the same criteria
+    up_TRMhi     = !is.na(avg_log2FC_TRMhi)     & avg_log2FC_TRMhi     > lfc_cutoff & !is.na(p_val_adj_TRMhi)     & p_val_adj_TRMhi     < padj_cutoff,
+    up_nonTRMhi  = !is.na(avg_log2FC_nonTRMhi)  & avg_log2FC_nonTRMhi  > lfc_cutoff & !is.na(p_val_adj_nonTRMhi)  & p_val_adj_nonTRMhi  < padj_cutoff,
+
+    # delta defined when both exist; otherwise NA (you can keep NA or set to avg_TRMhi/avg_nonTRMhi if you prefer)
+    delta_log2FC = ifelse(
+      !is.na(avg_log2FC_TRMhi) & !is.na(avg_log2FC_nonTRMhi),
+      avg_log2FC_TRMhi - avg_log2FC_nonTRMhi,
+      NA_real_
+    ),
+
+    category = case_when(
+      up_TRMhi & up_nonTRMhi  ~ "Shared_up",
+      up_TRMhi & !up_nonTRMhi ~ "TRMhi_only_up",
+      !up_TRMhi & up_nonTRMhi ~ "nonTRMhi_only_up",
+      TRUE                   ~ "Not_up_by_threshold"
+    )
+  ) %>%
+  # keep only what you want to see
+  select(
+    gene, cluster, category,
+    avg_log2FC_TRMhi, p_val_adj_TRMhi,
+    avg_log2FC_nonTRMhi, p_val_adj_nonTRMhi,
+    delta_log2FC
+  ) %>%
+  # optional: focus only on things up in at least one table
+  filter(category != "Not_up_by_threshold") %>%
+  # optional: prioritise TRMhi-only, then shared with biggest delta
+  arrange(
+    factor(category, levels = c("TRMhi_only_up", "Shared_up", "nonTRMhi_only_up")),
+    desc(delta_log2FC)
+  )
+```
+
+```{r}
+Idents(sc) <- "Tissue"
+test <- subset(sc, TRM_group == "TRMhi")
+sc.Avg <- AverageExpression(test, assays = "RNA", slot = "scale.data", return.seurat = T)
+```
+
+## Heatmap
+```{r}
+globaldeg <- subset(final_table, category == "TRMhi_only_up")
+
+library(ComplexHeatmap)
+library(circlize)
+library(dplyr)
+library(svglite)
+library(grid)
+
+mtx <- sc.Avg@assays$RNA@layers$scale.data |> as.data.frame()
+rownames(mtx) <- rownames(sc.Avg@assays$RNA)
+colnames(mtx) <- colnames(sc.Avg@assays$RNA)
+
+gene_col <- "gene"
+Heatmap_Genes <- globaldeg %>%
+  filter(p_val_adj_TRMhi < 0.01) %>%
+  arrange(desc(avg_log2FC_TRMhi)) %>%
+  distinct(.data[[gene_col]], .keep_all = TRUE) %>%
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC_TRMhi, n = 100, with_ties = FALSE) %>%
+  ungroup()
+
+x <- Heatmap_Genes$gene
+mtx_sub <- subset(mtx, rownames(mtx) %in% x)
+mtx_sub <- mtx_sub %>% arrange(factor(rownames(mtx_sub), levels = x))
+
+order <- rownames(sc.Avg@meta.data)
+order_rev <- order
+
+mtx_sub <- mtx_sub[, match(order_rev, colnames(mtx_sub)), drop = FALSE]
+
+meta <- sc.Avg@meta.data[order_rev, , drop = FALSE]
+meta$cluster <- rownames(meta)
+
+cluster_anno <- HeatmapAnnotation(
+  cluster = meta$cluster,
+  show_annotation_name = FALSE,
+  annotation_label = FALSE,
+  annotation_name_rot = 5,
+  show_legend = FALSE,
+  annotation_legend_param = list(labels_gp = gpar(fontsize = 0)),
+  col = list(cluster = cols$TRM_Tissue[levels(factor(meta$cluster))])
+)
+
+
+# Define the genes you want to label
+genes_to_label <- c("KLF3",
+                    "NR4A1","XCL1", 
+                     "CXCR6", "GZMA",
+                    "ITGA1",
+"GZMK", "EGR1", "JUN", "BATF", "RUNX2", "ADGRG1", "RUNX2", "CCR9",  "TFRC", "NR4A1")
+
+# Match these to the rownames of your heatmap matrix
+lab_idx <- which(rownames(mtx_sub) %in% genes_to_label)
+
+# Create the annotation
+labels <- rowAnnotation(
+  x = anno_mark(
+    at = lab_idx,
+    labels = rownames(mtx_sub)[lab_idx],
+    labels_rot = -30,
+    labels_gp = gpar(fontsize = 10),
+    padding = unit(1.5, "mm"),
+    side = "left"
+  )
+)
+
+# Create row annotations using HeatmapAnnotation
+right_annotation = rowAnnotation(anno = anno_block(gp = gpar(fill = cols$TRM_Tissue),
+        labels = factor(meta$cluster), labels_gp = gpar(col = "white", fontsize = 10), labels_rot = 0))
+
+
+col_fun <- colorRamp2(c(-0.25, 0, 0.75), c("black", "#21918c", "#fde725"))
+heatmap_legend_params <- list(
+  legend_direction = "horizontal",
+  legend_width = unit(3, "cm"),
+  labels_gp = gpar(fontsize = 10),
+  labels_rot = 0,
+  title = "",
+  title_gp = gpar(box_fill = "grey"),
+  at = c(-1, 0, 1)
+)
+
+hm <- Heatmap(
+  mtx_sub,
+  height = nrow(mtx_sub) * unit(0.1, "mm"),
+  width  = ncol(mtx_sub) * unit(5, "mm"),   # slightly slimmer columns for landscape
+  border = TRUE,
+  top_annotation = cluster_anno,
+  right_annotation = right_annotation,
+  row_names_gp = gpar(fontsize = 0),
+  left_annotation = labels,
+  split = Heatmap_Genes$cluster,
+  row_names_side = "left",
+  col = col_fun,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  show_row_dend = FALSE,
+  cluster_row_slices = FALSE,
+  show_column_names = FALSE,
+  cluster_column_slices = FALSE,
+  column_names_side = NULL,
+  row_title = " ",
+  column_title = "",
+  heatmap_legend_param = heatmap_legend_params
+)
+
+svglite("../docs/assets/04-Figure-4/HM.svg", width = 4, height = 4)  # landscape
+draw(hm, heatmap_legend_side = "bottom")
+invisible(dev.off())
+
+knitr::include_graphics("../docs/assets/04-Figure-4/HM.svg")
+```
+
+#----New Annotation of combined data Plaque-Only Cells----
+## Reannotate
+```{r}
+sc$celltype <- sc$mnn_clusters
+Idents(sc) <- "celltype"
+sc <- RenameIdents(sc,
+"3"   = "CD8 TN",
+"7"   = "CD8 TN",
+"6"   = "CD8 TCTLDM",
+"10"  = "CD8 Tc1DRM",
+"2" = "CD8 TDRM",
+"5" = "CD8 TDRM",
+"9" = "CD8 Tc1DM",
+"4"   = "CD8 TCTLDM",
+"8"   = "CD8 TCTLDM",
+"0" = "CD8 TDRM",
+"1" = "CD8 Tc1DRM")
+
+sc$celltype_l2 <- Idents(sc)
+
+levels(sc)
+
+sc$celltype_l2 <- factor(sc$celltype_l2, levels = c(
+ "CD8 TN",
+ "CD8 Tc1DM",
+ "CD8 TCTLDM",
+ "CD8 Tc1DRM",
+ "CD8 TDRM"))
+
+Idents(sc) <- "celltype_l2"
+levels(sc$celltype)
+```
+
+```{r}
+cyto_feats <- list(
+  Naive = c("CCR7", "LEF1","SELL", "TCF7"),
+  Cytokine = c("CD44", "IFNG","TNF","CCL4"),
+  Cytotoxic = c("GZMB","PRF1","GZMB","GNLY"),
+  Residency = c("CD40LG", "ITGAE", "VIM", "ITGA1", "TNFSF9", "RGCC", "BHLHE40", "NR4A1",  "NR4A2", "NR4A3", "CXCR4"),
+  Prolif = c("MKI67", "TOP2A", "STMN1")
+)
+
+seu_gene_sets_dot(sc,
+    cyto_feats,                         # named list: list("Group A"=c("G1","G2(+)"), "Group B"=c(...))
+    group_by = "celltype_l2",              # meta.data column (like DotPlot(group.by=))
+    assay    = NULL,                   # NULL => DefaultAssay(seu)
+    use_scaled_for_fill = T,        # TRUE: fill = avg.exp.scaled; FALSE: avg.exp (raw)
+    # aesthetics (DotPlot-like)
+    size_range   = c(1, 5),           # bubble size range
+    size_breaks  = c(1, 10, 100),  # % expressing
+    size_limits  = c(0, 100),          # % expressing limits
+    fill_limits  = c(-1, 1),           # when use_scaled_for_fill=TRUE
+    fill_palette = c("blue", "lightgrey", "darkred"),
+    x_label      = "",
+    base_size    = txt_pt,
+    x_angle      = 45,
+    x_text_size  = txt_pt-2,
+    y_text_size  = txt_pt,
+    x_title_size = txt_pt,
+    bracket_text_size = txt_mm,
+    bracket_tick = 0.25,
+    # layout/headroom controls
+    y_expand_add_bottom = 0.60,        # add bottom padding (lifts dots off x-axis)
+    y_expand_add_top    = 0.25,        # add top padding (reduces headroom)
+    y_bracket_offset    = 0.80,        # bracket baseline above top row (in "row" units)
+    y_label_offset      = 0.18,        # text above bracket baseline
+    plot_margin_cm      = c(1.2, 0.6, 0.6, 0.6),  # top, right, bottom, left
+    # NEW: clustering options
+    cluster_groups = F,            # reorder rows (clusters) by hclut
+    cluster_genes  = "within_group",
+    dist_method    = "euclidean",
+    hclust_method  = "complete") + theme(text = element_text(family = "Times")) 
+
+Idents(sc) <- "celltype_l2"
+VlnPlot(sc, c("TRM_Avg_UCell")) + geom_boxplot(width=0.1)
+VlnPlot(sc, c("Plaque_TRM_UCell")) + geom_boxplot(width=0.1)
+
+ DimPlot(sc)
+
+VlnPlot(sc, c("Plaque_TRM_UCell", "TRM_Avg_UCell"), stack=T,flip=T)
+Idents(sc) <- "Tissue"
+DimPlot(sc)
+
+VlnPlot(sc, c("TRM_Avg_UCell")) + geom_boxplot(width=0.1)
+VlnPlot(sc, c("Plaque_TRM_UCell")) + geom_boxplot(width=0.1)
+```
+```{r}
+DimPlot(sc, split.by = "Tissue", cols = cols$TRM_Tissue) + theme(aspect.ratio = 1)
+```
+
+## TRM Percent
+```{r}
+df <- sc@meta.data  %>%
+  dplyr::count(Tissue, celltype_l2) %>%              # count combinations
+  group_by(Tissue) %>%                      # within each celltype
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+TRM_Percent <- ggplot(df, aes(x = Tissue, y = percent, fill = celltype_l2)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  labs(y = "Percent of cells",
+       fill = "Cluster") +
+  theme_pubr(base_family = "Times") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right",
+    axis.title.x = element_blank()   # remove x-axis title
+  ) +
+  scale_fill_manual(values = cols$TRM)
+
+```
+
+#---- Plaque Core Signature Unstable vs. Stable ----
+```{r}
+Idents(Tc_8) <- "Tissue"
+plaque_TRM_tissuescore <- VlnPlot(Tc_8, c("Plaque_TRM_UCell"), fill.by = "ident", cols = c("grey", "#00C7CC", "#FA7F74"), pt.size = 0) + NoLegend() + labs(
+    title = expression("Plaque"~T[RM]~"signature"),
+    subtitle = ""
+  ) + geom_boxplot(width = 0.1, position = position_dodge(width = 0.9), outliers = F) + ylab(expression("UCell Score"))  +
+  theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    axis.text.x = element_text(size = txt_pt),
+    axis.text.y = element_text(size = txt_pt),
+    axis.title.x = element_text(size = 0),
+    axis.title.y = element_text(size = txt_pt),
+    plot.title = element_text(hjust = 0.5, size = txt_pt)
+  ) 
+
+svglite("../docs/assets/04-Figure-4/plaque_TRM_tissuescore.svg", width = 5, height = 5)
+plaque_TRM_tissuescore
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/plaque_TRM_tissuescore.svg")
+```
+
+```{r}
+TRM_Percent_plot <- TRM_Percent + NoLegend()
+
+svglite("../docs/assets/04-Figure-4/Sig_Combined.svg", width = 4, height = 3)
+plot_grid(TRM_Percent_plot, plaque_TRM_tissuescore,
+  align = "hv", axis = "tbrl", rel_widths = c(1.5,1), ncol = 2)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/04-Figure-4/Sig_Combined.svg")
+```
+
+```{r}
+saveRDS(sc, "../output/04-Figure-4/sc.rds")
+```

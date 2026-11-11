@@ -1,0 +1,822 @@
+---
+title: "Figure 5"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
+site: workflowr::wflow_site
+output:
+  workflowr::wflow_html:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Setup {.tabset .tabset-pills}
+## Load the libraries
+```{r message=FALSE, warning=FALSE}
+suppressPackageStartupMessages({
+## Key
+library(Seurat)
+library(scRepertoire)
+library(MAST)
+library(ProjecTILs)
+
+## Wrangling
+library(stringr)
+library(tidyr)
+library(dplyr)
+library(nichenetr)
+
+## Visualization
+library(pals)
+library(DT)
+library(ggplot2)
+library(ggpubr)
+library(RColorBrewer)
+library(circlize)
+library(ComplexHeatmap)
+library(plot1cell)
+library(ggvenn)
+library(ggalluvial)
+library(stringr)
+library(readr)
+library(gridExtra)
+library(tibble)
+library(enrichR)
+library(EnhancedVolcano)
+library(openxlsx)
+library(svglite)
+})
+```
+
+## Define Gene Sets
+```{r}
+Gene_Sets <- list()
+# Poon NI 2023
+xl <- read.xlsx("../data/TRM_Sig/Poonetal_SuppTable7_barrTRM_v_Other_DEGs.xlsx", sheet = 1)
+xl <- xl[-1] 
+xl_up <- xl %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = c("Tissue", ".value"),
+    names_pattern = "(JE|LG|SK)_(.*)"
+  ) %>% subset(logfoldchang > 0.75 & pvals_adj < 0.05) %>%
+  group_by(names) %>% 
+  dplyr::filter(n_distinct(Tissue) >= 3) %>%
+  ungroup()  
+
+xl_up <- unique(xl_up$names)
+xl_up <- as.vector(na.omit(convert_human_to_mouse_symbols(xl_up)))
+xl_up <- paste0(xl_up, "+")
+
+xl_down <- xl %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = c("Tissue", ".value"),
+    names_pattern = "(JE|LG|SK)_(.*)"
+  ) %>% subset(logfoldchang < -0.75 & pvals_adj <0.05) %>%
+  group_by(names) %>% 
+  dplyr::filter(n_distinct(Tissue) >= 3) %>%
+  ungroup()  
+# The data have been subset to include significant genes only present in 2 or more organs
+
+xl_down <- unique(xl_down$names)
+xl_down <- as.vector(na.omit(convert_human_to_mouse_symbols(xl_down)))
+xl_down <- paste0(xl_down, "-")
+
+Poon_2023 <- c(xl_up, xl_down )
+  
+
+# Mackay 2016
+Mackay_2016 <- read.xlsx("../data/TRM_Sig/Trm_sig_Mackay2016_suppFig13.xlsx", sheet = 1)
+
+# Scott 2025 - Genes_Up
+Scott_2025_Icos <- read.xlsx("../data/TRM_Sig/Trm_signature_Scott2025_Figure7.xlsx", sheet = 1)
+Scott_2025_NoIcos <- read.xlsx("../data/TRM_Sig/Trm_signature_Scott2025_Figure7.xlsx", sheet = 3)
+Scott_2025_up <- unique(c(Scott_2025_Icos$Icoshi_Trm_up_genes, Scott_2025_NoIcos$Icoslo_Trm_up_genes))
+Scott_2025_up <- paste0(Scott_2025_up, "+")
+
+# Scott 2025 - Genes_Down
+Scott_2025_Icos <- read.xlsx("../data/TRM_Sig/Trm_signature_Scott2025_Figure7.xlsx", sheet = 2)
+Scott_2025_NoIcos <- read.xlsx("../data/TRM_Sig/Trm_signature_Scott2025_Figure7.xlsx", sheet = 4)
+Scott_2025_down <- unique(c(Scott_2025_Icos$Icoshi_Trm_down_genes, Scott_2025_NoIcos$Icoslo_Trm_down_genes))
+Scott_2025_down <- paste0(Scott_2025_down, "-")
+
+Scott_2025 <- c(Scott_2025_up, Scott_2025_down)
+
+# Jaiswal
+Jaiswal_2022 <- read.xlsx("../data/TRM_Sig/Trm_sig_Jaiswal2022_supp1.xlsx", sheet = 1)
+up <- c(Jaiswal_2022$Exclusive_high, Jaiswal_2022$non_exclusive_up )
+up <- na.omit(up)
+up <- as.vector(na.omit(convert_human_to_mouse_symbols(up)))
+
+
+
+down <- subset(Jaiswal_2022, Exclusive_down != "NA")$Exclusive_down
+down <- as.vector(na.omit(convert_human_to_mouse_symbols(down)))
+Jaiswal_2022 <- c(paste0(up, "+"), paste0(down, "-") )
+  
+Gene_Sets[["Poon_2023"]] <- Poon_2023
+Gene_Sets[["Jaiswal_2022"]] <- Jaiswal_2022
+Gene_Sets[["Mackay_2016"]] <- Mackay_2016
+Gene_Sets[["Scott_2025"]] <- Scott_2025
+
+Other_Sets <- list()
+
+# Utzschneider NAture Immunology 2020
+xl <- read.xlsx("../../../../../My_Analysis/reference_data/Gene_Signatures/Utzschneider_NatImmunology_2020.xlsx", sheet = 5, startRow = 2)
+Other_Sets[["TEX_Utzschneider_2020"]] <- as.vector(xl$Symbol)
+
+Other_Sets[["TCR_Elliot_2021"]] <- as.vector(c("Nr4a1", "Nr4a2", "Nr4a3", "Cd69", "Tnf", "Irf4", "Irf8", "Egr2", "Tnfsf4", "Il2", "Il2ra", "Cd40lg", "Pdcd1", "Tbx21", "Ifng", "Gzmb", "Il12rb2", "Malt1", "Mt1", "Mt2", "Il21", "Rora", "Rorc", "Ctla4", "Icos", "Maf", "Il10", "Nfil3", "Tigit", "Lag3", "Cd3g", "Cd3e", "Lck", "Rasgrp1", "Gata3", "Bhlhe40", "Eomes", "Runx3"))
+```
+
+## Load Data
+```{r}
+Tc <- readRDS("../objects/Tc_Mouse.rds")
+```
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = F, message = F, dpi = 300)
+functions <- list.files("../code/", pattern = "\\.R$", full.names = TRUE)
+invisible(lapply(functions, source))
+```
+
+## Set up output directories
+```{r}
+dir.create("../docs/assets/05-Figure-5")
+```
+## Design Elements
+```{r}
+# Create vector colors
+cols <- readRDS("../docs/assets/00-DesignElements/DesignElements.rds")
+```
+
+A4 width = 210 mm = 8.27 in
+A4 height = 297 mm = 11.69 in
+
+#-----Clustering------ {.tabset .tabset-pills .tabset-fade}
+## UMAPs
+```{r}
+Idents(Tc) <- "celltype"
+svglite("../docs/assets/05-Figure-5/UMAP.svg", width = 4, height = 4)
+DimPlot(Tc, pt.size = 0.1, cols = cols$celltype_m[levels(Tc)]) & NoAxes()  & theme(aspect.ratio = 1)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/UMAP.svg")
+```
+
+# Cluster Descriptions
+```{r}
+txt_pt <- 10                   # ONE size in points for all theme text
+txt_mm <- txt_pt / 2.845  
+```
+
+```{r}
+feat <- list(
+    Lin = c("Cd4","Cd8a"),
+    Naive = c("Ccr7", "Sell","Tcf7", "Klf2"),
+    Activation = c("Cd44", "Cd69","Ifng", "Ccl5"),
+    Cytotoxic = c( "Gzmb","Nkg7","Runx3"),
+    Treg = c( "Foxp3","Il2ra", "Ctla4"),
+    Proliferation = c( "Stmn1","Mki67", "Top2a"))
+
+Dot <- seu_gene_sets_dot(Tc,
+    feat,                         # named list: list("Group A"=c("G1","G2(+)"), "Group B"=c(...))
+    group_by = "celltype",              # meta.data column (like DotPlot(group.by=))
+    assay    = NULL,                   # NULL => DefaultAssay(seu)
+    use_scaled_for_fill = TRUE,        # TRUE: fill = avg.exp.scaled; FALSE: avg.exp (raw)
+    # aesthetics (DotPlot-like)
+    size_range   = c(1, 5),           # bubble size range
+    size_breaks  = c(5, 20, 40),  # % expressing
+    size_limits  = c(0, 100),          # % expressing limits
+    fill_limits  = c(-1, 1),           # when use_scaled_for_fill=TRUE
+    fill_palette = c("blue", "lightgrey", "darkred"),
+    x_label      = "",
+    base_size    = txt_pt,
+    x_angle      = 45,
+    x_text_size  = txt_pt,
+    y_text_size  = txt_pt,
+    x_title_size = txt_pt,
+    bracket_text_size = txt_mm,
+    bracket_tick = 0.25,
+    # layout/headroom controls
+    y_expand_add_bottom = 0.60,        # add bottom padding (lifts dots off x-axis)
+    y_expand_add_top    = 0.25,        # add top padding (reduces headroom)
+    y_bracket_offset    = 0.80,        # bracket baseline above top row (in "row" units)
+    y_label_offset      = 0.18,        # text above bracket baseline
+    plot_margin_cm      = c(1.2, 0.6, 0.6, 0.6),  # top, right, bottom, left
+    # NEW: clustering options
+    cluster_groups = F,            # reorder rows (clusters) by hclut
+    cluster_genes  = "within_group",
+    dist_method    = "euclidean",
+    hclust_method  = "complete") & theme(text = element_text(family = "Times"))
+
+
+svglite("../docs/assets/05-Figure-5/cluster_data.svg", width = 7, height = 3)
+Dot
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/cluster_data.svg")
+```
+
+#-----Changes in Representation of Expanded------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+library(dplyr)
+library(ggplot2)
+
+df <- Tc@meta.data  %>%
+  dplyr::count(Tissue, celltype) %>%              # count combinations
+  group_by(Tissue) %>%                      # within each celltype
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+
+Percent <- ggplot(df, aes(x = Tissue, y = percent, fill = celltype)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  labs(y = "Percent of cells",
+       fill = "Cluster") +
+  theme_pubr(base_family = "Times") +
+  theme(aspect.ratio = 2,
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = 16),
+    axis.title  = element_text(size = 16),
+    legend.title = element_text(size = 16),
+    legend.text  = element_text(size = 16),
+    legend.position = "right",
+    axis.title.x = element_blank()   # remove x-axis title
+  ) + scale_fill_manual(values = cols$celltype_m[levels(Tc)]) 
+
+Percent
+```
+
+#-----Venn of DEG------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+Idents(Tc) <- "Tissue"
+Spleen <- FindMarkers(Tc, ident.1 = "Spleen", min.pct = 0.2, logfc.threshold = 0.25, test.use = "MAST", only.pos = T)
+Spleen <- subset(Spleen, p_val_adj < 0.05)
+Stable <- FindMarkers(Tc, ident.1 = "Stable", min.pct = 0.2, logfc.threshold = 0.25, test.use = "MAST", only.pos = T)
+Stable <- subset(Stable, p_val_adj < 0.05)
+Unstable <- FindMarkers(Tc, ident.1 = "Unstable", min.pct = 0.2, logfc.threshold = 0.25, test.use = "MAST", only.pos = T)
+Unstable <- subset(Unstable, p_val_adj < 0.05)
+```
+
+```{r}
+Venn <- list(
+Spleen = rownames(Spleen),
+Stable = rownames(Stable),
+Unstable = rownames(Unstable))
+
+svglite("../docs/assets/05-Figure-5/Venn.svg", width = 4, height = 4)
+ggvenn::ggvenn(Venn, fill_color = c("grey", "#00C7CC", "#FA7F74"), show_percentage = F, text_size = txt_pt-2, set_name_size = txt_pt) & theme(text = element_text(family = "Times"))
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/Venn.svg")
+```
+
+
+#-----Activation and Cytotoxicity------ {.tabset .tabset-pills .tabset-fade}
+## DEG
+```{r}
+# Set tissue identifier
+Idents(Tc) <- "Tissue"
+
+groups <- c("Spleen", "Stable", "Unstable")
+
+Unique_vs_Common_Graph <- get_unique_and_common_degs(
+  seu          = Tc,
+  groups       = groups,
+  ident_col    = "Tissue",        # change if your column is called something else
+  unique_groups= c("Spleen", "Stable", "Unstable"),
+  common_sets  = list(
+    c("Unstable", "Stable")),
+  min.pct        = 0.2,
+  logfc.threshold= 0.25,
+  pval_cutoff    = 0.05,
+  test.use       = "MAST"
+)
+```
+
+## HM
+```{r, fig.height=18, fig.width=2.5, dpi = 300}
+Idents(Tc) <- "Tissue"
+Tc.Avg <- AverageExpression(Tc, assays = "RNA", slot = "scale.data", return.seurat = TRUE)
+```
+
+```{r}
+Heatmap_Genes <- Unique_vs_Common_Graph %>% group_by(cluster) %>% top_n(100, wt = avg_log2FC)
+Heatmap_Genes$Num <- rownames(Heatmap_Genes)
+
+mtx <- Tc.Avg@assays$RNA@layers$scale.data
+mtx <- as.data.frame(mtx)
+colnames(mtx) <- colnames(Tc.Avg)
+rownames(mtx) <- rownames(Tc.Avg)
+         
+mtx_sub <-subset(mtx, rownames(mtx) %in% Heatmap_Genes$gene)
+x <- Heatmap_Genes$gene
+mtx_sub <- mtx_sub[, c(3,2,1)]
+mtx_sub <- mtx_sub %>% arrange(factor(rownames(mtx_sub), levels = x))
+
+meta <- Tc.Avg@meta.data
+meta$cluster <- rownames(meta)
+meta <- meta[c(3,2,1),]
+
+# Set up annotations for rows and clusters
+# genes you want to label
+genes_to_label <- c(
+  "Tcf7", "Sell", "Lef1", "Cd27",
+  "Klrg1", "Il7r", "Stat4", "Itga4",
+  "Tnf", "Klrk1", "Ly6e", "Il18r",
+  "Gzmb", "Cd44", "Cd69", "Pdcd1", "Bhlhe40", "Icos", "Cxcr6", "Pdcd1", "Il18r", "Tnfrsf4", "Furin"
+  
+)   # <-- edit this
+
+# find their row indices in the heatmap data
+lab_idx <- which(Heatmap_Genes$gene %in% genes_to_label)
+
+# sanity check (optional)
+Heatmap_Genes$gene[lab_idx]
+
+labels <- rowAnnotation(
+  x = anno_mark(
+    at = lab_idx,
+    labels_rot = -30,
+    labels_gp = gpar(fontsize = txt_pt),
+    padding = unit(1, "mm"),
+    labels = Heatmap_Genes$gene[lab_idx],
+    side = "left"
+  )
+)
+
+cluster_anno <- HeatmapAnnotation(
+  cluster = meta$cluster,
+  show_annotation_name = FALSE,
+  annotation_label = FALSE,
+  annotation_name_rot = 5,
+  show_legend = FALSE,
+  annotation_legend_param = list(labels_gp = gpar(fontsize = 0)),
+  col = list(cluster = cols$Tissue[c(1,3,4)]
+)
+)
+
+# Set up heatmap colors and legend
+col_fun <- colorRamp2(c(-0.75, 0, 0.75), c("blue", "#EEEEEE", "red"))
+heatmap_legend_params <- list(
+  legend_direction = "horizontal",
+  legend_width = unit(1.5, "cm"),
+  labels_gp = gpar(fontsize = txt_pt),
+  labels_rot = -90,
+  title = "",
+  title_gp = gpar(box_fill = "grey"),
+  at = c(-1, 0, 1)
+)
+
+# Create row annotations using HeatmapAnnotation
+right_annotation = rowAnnotation(anno = anno_block(gp = gpar(fill = cols$Tissue[c(1,3,4,5)]),
+        labels = c("Spleen Unique", "Stable Unique", "Unstable Unique", "Plaque Common"), labels_gp = gpar(col = "white", fontsize = txt_pt), labels_rot = -90))
+
+# Draw heatmap
+Hm <- Heatmap(
+  mtx_sub,
+  height = nrow(mtx_sub)*unit(0.35, "mm"),
+  width = ncol(mtx_sub)*unit(2.5, "mm"),
+  border = TRUE,
+  top_annotation = cluster_anno,
+  right_annotation = right_annotation,
+  row_names_gp = gpar(fontsize = 0),
+  left_annotation = labels,
+  col = col_fun,
+  split = Heatmap_Genes$cluster,
+  cluster_rows = TRUE,
+  cluster_columns = FALSE,
+  show_row_dend = FALSE,
+  cluster_row_slices = FALSE,
+  show_column_names = FALSE,
+  cluster_column_slices = FALSE,
+  column_names_side = NULL,
+  row_title = " ",
+  heatmap_legend_param = heatmap_legend_params)
+
+svglite("../docs/assets/05-Figure-5/Tissue_Hm.svg", width = 3, height = 10)
+draw(Hm, heatmap_legend_side = "bottom")
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/Tissue_Hm.svg")
+
+```
+
+## Cytotoxicity comes from CD8s
+```{r}
+t_common <- theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    axis.text.x  = element_text(size = txt_pt),
+    axis.text.y  = element_text(size = txt_pt),
+    axis.title.x = element_text(size = txt_pt),
+    axis.title.y = element_text(size = txt_pt),
+    plot.margin  = margin(1, 1, 1, 1),
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.text  = element_text(size = txt_pt, angle = 0),
+    legend.justification = "centre"
+    )
+
+a <- FeaturePlot(Tc, features = "Gzmb", order = TRUE, pt.size = 0.005) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.25, NA), breaks = c(0, 1, 2, 3, 4)) & labs(color = "Expression") & t_common & labs(
+    title = "Gzmb")
+
+svglite("../docs/assets/05-Figure-5/Gzmb_feat.svg", width = 3.5, height = 3.5)
+a
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/Gzmb_feat.svg")
+```
+
+#----Representation of Expanded CD8 T cells---
+```{r}
+Tc_TCR <- subset(Tc, Frequency > 0)
+
+## Recalculate by GrossTissue
+library(dplyr)
+
+Tc_TCR@meta.data <- Tc_TCR@meta.data %>%
+  mutate(
+Exp = sub("^[^_]+_([^_]+)_.*$", "\\1", orig.ident)
+  )
+
+Tc_TCR <- recalculateFrequency(Tc_TCR, cloneCall = "gene", groupBy = "Exp")
+
+## Overwrite Old Frequency
+Tc_TCR$Frequency <- Tc_TCR$recalFrequency.Exp
+
+table(Tc_TCR$cloneType)
+
+## Reorder Points on Levels of TCR
+slot(Tc_TCR, "meta.data")$cloneType <- factor(slot(Tc_TCR, "meta.data")$cloneType, levels = c(
+"Hyperexpanded (0.1 < X <= 1)",
+"Large (0.01 < X <= 0.1)",
+"Medium (0.001 < X <= 0.01)",
+"Small (1e-04 < X <= 0.001)",
+"Rare (0 < X <= 1e-04)",
+"Single Clone", NA))
+
+Tc_TCR$cloneSize <- Tc_TCR $cloneType
+
+table(Tc_TCR$cloneSize)
+
+levels(factor(Tc_TCR$recalFrequency.Exp))
+
+## Assign Expanded vs Non-Expanded Label
+Tc_TCR$Expanded <- Tc_TCR$Frequency
+Idents(Tc_TCR) <- "Expanded"
+
+Tc_TCR$Expanded <- ifelse(Tc_TCR$recalFrequency.Exp == "Single", "Single", "Expanded")
+Tc_TCR$Expanded <- Tc_TCR$Expanded
+```
+
+```{r}
+df <- subset(Tc_TCR, celltype == c("CD8 Mem", "CD8 Cytotoxic"))@meta.data  %>%
+  dplyr::count(Tissue, Expanded) %>%              # count combinations
+  group_by(Tissue) %>%                      # within each celltype
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+Expanded_CD8_Percent <- ggplot(df, aes(x = Tissue, y = percent, fill = Expanded)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  labs(y = "Percent of cells",
+       fill = "Cluster") +
+  theme_pubr(base_family = "Times") +
+  theme(aspect.ratio = 2,
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right",
+    axis.title.x = element_blank()   # remove x-axis title
+  ) + scale_fill_manual(values = c("#FFD662FF", "#00539CFF"))
+
+df <- subset(Tc_TCR, celltype == c("CD4 Mem", "CD4 TH"))@meta.data  %>%
+  dplyr::count(Tissue, Expanded) %>%              # count combinations
+  group_by(Tissue) %>%                      # within each celltype
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+Expanded_CD4_Percent <- ggplot(df, aes(x = Tissue, y = percent, fill = Expanded)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  labs(y = "Percent of cells",
+       fill = "Cluster") +
+  theme_pubr(base_family = "Times") +
+  theme(aspect.ratio = 2,
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right",
+    axis.title.x = element_blank()   # remove x-axis title
+  ) + scale_fill_manual(values = c("#FFD662FF", "#00539CFF"))
+
+```
+
+
+#----Cluster respresentation in Expanded Cell Per Tissue---
+```{r}
+df <- subset(Tc_TCR, Expanded == "Expanded")@meta.data  %>%
+  dplyr::count(Tissue, celltype) %>%              # count combinations
+  group_by(Tissue) %>%                      # within each celltype
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+Expanded_celltype <- ggplot(df, aes(x = Tissue, y = percent, fill = celltype)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  labs(y = "Percent of Expanded cells",
+       fill = "Cluster") +
+  theme_pubr(base_family = "Times") +
+  theme(aspect.ratio = 2,
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right",
+    axis.title.x = element_blank()   # remove x-axis title
+  ) + scale_fill_manual(values = cols$celltype)
+```
+
+
+##----Expanded vs. Not CD8 DEG----
+```{r}
+Idents(Tc_TCR) <- "Expanded"
+
+Expanded_vs_Single <- FindMarkers(Tc_TCR, ident.1 = "Expanded", min.pct = 0.2, logfc.threshold = 0, only.pos = F, test.use = "MAST",
+verbose = F)
+
+Expanded_vs_Single$gene <- rownames(Expanded_vs_Single)
+Expanded_vs_Single$Group <- ifelse(Expanded_vs_Single$avg_log2FC < 0, "Single", "Expanded")
+```
+```{r}
+keyvals <- ifelse(Expanded_vs_Single$avg_log2FC < -0.25 & Expanded_vs_Single$p_val_adj < 0.01, "#00539CFF", ifelse(Expanded_vs_Single$avg_log2FC > 0.25 & Expanded_vs_Single$p_val_adj < 0.01, "#FFD662FF",
+        'black'))
+keyvals[is.na(keyvals)] <- 'black'
+names(keyvals)[keyvals == '#FFD662FF'] <- 'Unstable'
+names(keyvals)[keyvals == 'black'] <- ''
+names(keyvals)[keyvals == '#00539CFF'] <- 'Stable'
+
+
+ ExpandedVol <- EnhancedVolcano(Expanded_vs_Single,
+    lab = Expanded_vs_Single$gene,
+    caption = "",
+    x = 'avg_log2FC',
+    y = 'p_val_adj',
+    title = "",
+    subtitle = "",
+    legendPosition = "none",
+    FCcutoff = 0.25,
+    pCutoff = 0.01,
+    boxedLabels = T, pointSize = 4, labSize = 4,
+    drawConnectors = T,
+    selectLab = c("Gzmb", "Gzmk", "Pdcd1", "Cxcr6", "Tigit", "Tox", "Bhlhe40", "Runx3"),
+colCustom = keyvals) + scale_x_continuous(limits = c(-2.5, 3)) + scale_y_continuous(limits = c(0, 60)) +
+  theme_pubr() + 
+  NoLegend() + 
+  theme(aspect.ratio = 1,
+  text = element_text(family = "Times"),      
+  axis.text.x = element_text(size = txt_pt), 
+  axis.text.y = element_text(size = txt_pt), 
+  axis.title.x = element_text(size = txt_pt), 
+  axis.title.y = element_text(size = txt_pt),
+plot.title = element_text(hjust = 0.5, size = txt_pt + 4)) +
+  ggtitle("Single Clones vs. Expanded")  # Add your title here
+```
+
+
+#-----Tissue Residency------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+Tc <- UCell::AddModuleScore_UCell(Tc, features = Gene_Sets, w_neg = 1, maxRank = 2000)
+
+groups <- paste0(names(Gene_Sets), "_UCell")
+score_cols <- grep("_UCell", colnames(Tc@meta.data), value = TRUE)
+Tc$TRM_Avg_UCell <- rowMeans(Tc@meta.data[, score_cols], na.rm = TRUE)
+```
+
+```{r}
+t_common <- theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    axis.text.x  = element_text(size = 12),
+    axis.text.y  = element_text(size = 12),
+    axis.title.x = element_text(size = 20),
+    axis.title.y = element_text(size = 20),
+    plot.margin  = margin(1, 1, 1, 1),
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.text  = element_text(size = 10, angle = 90),
+    legend.justification = "centre"
+    )
+
+a <- FeaturePlot(Tc, features = "Mackay_2016_UCell", order = TRUE) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.1, NA), breaks = c(0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35)) & labs(color = "Expression") & t_common & labs(
+    title = "Mackay et al., 2016")
+
+b <- FeaturePlot(Tc, features = "Scott_2025_UCell", order = TRUE) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.05, NA),  breaks = c(0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35)) & labs(color = "Expression") & t_common & labs(
+    title = "Scott et al., 2025")
+
+c <- FeaturePlot(Tc, features = "Poon_2023_UCell", order = TRUE) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.05, NA),  breaks = c(0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35)) & labs(color = "Expression") & t_common & labs(
+    title = "Poon et al., 2023")
+
+d <- FeaturePlot(Tc, features = "Jaiswal_2022_UCell", order = TRUE) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.05, NA), breaks = c(0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35)) & labs(color = "Expression") & t_common & labs(
+    title = "Jaiswal et al., 2022"
+  )
+
+e <- FeaturePlot(Tc, features = "TRM_Avg_UCell", order = TRUE) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.05, NA), breaks = c(0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35)) & labs(color = "Expression") & t_common & labs(
+    title = "Average Score"
+  )
+
+svglite("../docs/assets/05-Figure-5/TRM_GSS_Feature.svg", width = 20, height = 5)
+plot_grid(a,b,c,d,e,
+  align = "hv", axis = "tbrl",
+  ncol = 5)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/TRM_GSS_Feature.svg")
+```
+
+#-----CD8 Exhaustion------ {.tabset .tabset-pills .tabset-fade}
+## TEX_Umap
+```{r}
+DefaultAssay(Tc) <- "RNA"
+
+# Define the genes and threshold
+genes <- c("Tox", "Icos", "Pdcd1", "Lag3", "Irf4", "Il21r", "Faslg")
+thr   <- 0.75
+
+# CD8 genes (mouse)
+cd8_genes <- c("Cd8a", "Cd8b1")
+
+# Keep only genes that exist in the object
+genes_present <- intersect(genes, rownames(Tc))
+if (!"Tox" %in% genes_present) stop("Tox not found in Tc")
+
+cd8_present <- intersect(cd8_genes, rownames(Tc))
+if (length(cd8_present) == 0) stop("Neither Cd8a nor Cd8b1 found in Tc")
+
+# Get expression (scaled)
+expr <- GetAssayData(Tc, assay = "RNA", slot = "scale.data")[genes_present, , drop = FALSE]
+
+# TOX expression per cell
+tox_expr <- expr["Tox", ]
+
+# Other exhaustion genes
+other_genes <- setdiff(genes_present, "Tox")
+
+# How many of the *other* genes are > threshold per cell
+other_count <- colSums(expr[other_genes, , drop = FALSE] > thr)
+
+# CD8 gate (CD8a OR CD8b1 must be expressed)
+cd8_expr <- GetAssayData(Tc, assay = "RNA", slot = "scale.data")[cd8_present, , drop = FALSE]
+cd8_ok   <- colSums(cd8_expr > thr) >= 0.75
+
+# Cells: TOX > thr AND at least 3 of the others > thr AND CD8a/b1 > thr
+sel <- tox_expr > thr & other_count >= 3 & cd8_ok
+
+Tex_cells <- colnames(Tc)[sel]
+
+# Add to metadata
+Tc$TEX <- ifelse(colnames(Tc) %in% Tex_cells, "TEX", "Other")
+
+# Extract UMAP coordinates and metadata
+umap_df <- as.data.frame(Embeddings(Tc, "umap"))
+umap_df$cell      <- rownames(umap_df)
+umap_df$highlight <- Tc$TEX
+
+library(ggtext)
+library(ggplot2)
+
+Tex_fplot <- ggplot(umap_df, aes(x = UMAP_1, y = UMAP_2)) +
+  geom_point(
+    data = subset(umap_df, highlight == "Other"),
+    color = "lightgrey",
+    size  = 1.5
+  ) +
+  geom_point(
+    data = subset(umap_df, highlight == "TEX"),
+    aes(fill = highlight),
+    shape = 21,
+    size  = 2,
+    stroke = 0.3,
+    color = "black"
+  ) +
+  scale_fill_manual(values = c("TEX" = "#edbe2a")) +
+  theme_void() +
+  ggtitle("T<sub>EX</sub>") +
+  theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    plot.title = element_markdown(
+      size   = 40,
+      hjust  = 0.5,
+      face   = "bold",
+      color  = "#edbe2a",
+      margin = margin(b = 10),
+      lineheight = 5
+    ),
+    legend.position = "none"
+  )
+
+svglite("../docs/assets/05-Figure-5/TEX_fplot.svg", width = 3, height = 4)
+print(Tex_fplot)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/TEX_fplot.svg")
+```
+
+## Representation of TEX per Tissue
+```{r}
+df <- Tc@meta.data  %>%
+  dplyr::count(Tissue, TEX) %>%              # count combinations
+  group_by(Tissue) %>%                      # within each celltype
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+TEX_Percent <- ggplot(df, aes(x = Tissue, y = percent, fill = Tissue)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  labs(y = expression(Percent~T[EX]),
+       fill = "Cluster") +
+  theme_pubr(base_family = "Times") +
+  theme(aspect.ratio = 2,
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right",
+    axis.title.x = element_blank()   # remove x-axis title
+  ) + scale_fill_manual(values = cols$Tissue[2:4]) + ylim(c(0,5)) + NoLegend()
+```
+
+## Representation of TEX per Cluster
+```{r}
+df <- Tc@meta.data  %>%
+  dplyr::count(celltype, TEX) %>%              # count combinations
+  group_by(celltype) %>%                      # within each celltype
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+ggplot(df, aes(x = celltype, y = percent, fill = celltype)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  labs(y = "Percent TEX",
+       fill = "Cluster") +
+  theme_pubr(base_family = "Times") +
+  theme(aspect.ratio = 2,
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right",
+    axis.title.x = element_blank()   # remove x-axis title
+  ) + scale_fill_manual(values = cols$celltype) + ylim(c(0,5)) + NoLegend()
+```
+
+## PTIL Version
+```{r}
+df <- Tc@meta.data  %>%
+  dplyr::count(Tissue, PTIL.ID) %>%              # count combinations
+  group_by(Tissue) %>%                      # within each celltype
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+df <- subset(df, PTIL.ID == "CD8_Tex")
+
+ggplot(df, aes(x = Tissue, y = percent, fill = Tissue)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  labs(y = "Percent TEX (reference mapping)",
+       fill = "Cluster") +
+  theme_pubr(base_family = "Times") +
+  theme(aspect.ratio = 2,
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right",
+    axis.title.x = element_blank()   # remove x-axis title
+  ) + scale_fill_manual(values = cols$Tissue[2:4]) + ylim(c(0,5)) + NoLegend()
+```
+
+## Combine Plots
+```{r}
+svglite("../docs/assets/05-Figure-5/Combined_Plots.svg", width = 15, height = 8)
+plot_grid(Expanded_CD8_Percent, Expanded_celltype, ExpandedVol,
+          Tex_fplot, TEX_Percent,
+  align = "hv", axis = "tbrl", 
+  ncol = 3)
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/Combined_Plots.svg")
+```
+
+# Save
+```{r}
+dir.create("../output/05-Figure-5")
+saveRDS(Tc, "../output/05-Figure-5/Tc.rds")
+saveRDS(Tc_8, "../output/05-Figure-5/Tc_8.rds")
+```
+
+```{r}
+sessionInfo()
+```
+

@@ -1,0 +1,243 @@
+---
+title: "Figure 7"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
+site: workflowr::wflow_site
+output:
+  workflowr::wflow_html:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+# Setup {.tabset .tabset-pills}
+## Load the libraries
+```{r message=FALSE, warning=FALSE}
+set.seed(01122023)
+suppressPackageStartupMessages({
+library(Seurat)
+library(SeuratWrappers)
+library(MAST)
+library(cowplot)
+library(stringr)
+library(tidyr)
+library(dplyr)
+library(nichenetr)
+library(pals)
+library(DT)
+library(ggplot2)
+library(ggpubr)
+library(RColorBrewer)
+library(circlize)
+library(ComplexHeatmap)
+library(ggvenn)
+library(ggalluvial)
+library(stringr)
+library(readr)
+library(gridExtra)
+library(tibble)
+library(enrichR)
+library(EnhancedVolcano)
+library(openxlsx)
+library(svglite)
+library(eulerr)
+library(survminer)
+})
+```
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = F, message = F, dpi = 300)
+functions <- list.files("../code/", pattern = "\\.R$", full.names = TRUE)
+invisible(lapply(functions, source))
+```
+
+## Set up output directories
+```{r}
+dir.create("../docs/assets/07-Figure-7")
+```
+
+```{r}
+Tc <- readRDS("../objects/Tc.rds")
+Tc_4 <- readRDS("../objects/Tc_4.rds")
+Tc_8 <- readRDS("../objects/Tc_8.rds")
+```
+
+```{r}
+# Choose a sensible figure base font size for A4
+# (9–11 is typical for manuscripts; 10 is a good default)
+BASE_PT <- 10
+
+# ggplot2 geom_text size is in mm, theme text is in pt
+PT_TO_MM <- function(pt) pt / 2.845
+
+# One shared theme for consistency across *everything*
+BASE_THEME <- theme_pubr(base_size = BASE_PT, base_family = "Times") +
+  theme(
+    text        = element_text(family = "Times", size = BASE_PT),
+    axis.line   = element_line(linewidth = 0.4),
+    plot.margin = margin(5, 5, 5, 5),
+    plot.title  = element_text(hjust = 0.5, vjust = 1, size = BASE_PT),
+    plot.subtitle = element_text(hjust = 0.5, size = BASE_PT),
+    legend.title = element_text(size = BASE_PT),
+    legend.text  = element_text(size = BASE_PT)
+  )
+```
+
+#-----Feature Plot of genes chosen------
+```{r, fig.width=10, fig.height=10}
+t_common <- BASE_THEME +
+  theme(
+    aspect.ratio = 1,
+    axis.text.x  = element_text(size = BASE_PT),
+    axis.text.y  = element_text(size = BASE_PT),
+    axis.title.x = element_text(size = BASE_PT),
+    axis.title.y = element_text(size = BASE_PT),
+    legend.position = "bottom",
+    legend.title    = element_blank(),
+    legend.text     = element_text(size = BASE_PT, angle = 0),
+    legend.justification = "center"
+  )
+
+Feature <- FeaturePlot(Tc_8, c("GZMB", "PRDM1", "RUNX3"), order = TRUE, ncol = 4) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.5, NA), breaks = c(0,1,2,3,4)) & labs(color = "Expression") & t_common + NoAxes()
+
+svglite("../docs/assets/07-Figure-7/Feature.svg", width = 3.5, height = 4)
+Feature
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/07-Figure-7/Feature.svg")
+```
+
+#-----Relevance of PRDM1 and RUNX3 to Cytotoxicity------
+```{r}
+# RUNX3+ PRDM1+  vs  all other cells
+DefaultAssay(Tc_8) <- "RNA"
+p8 <- subset(Tc_8, PB == "Plaque")
+
+genes <- c("PRDM1", "RUNX3")
+thr   <- 0.75
+
+# Use log-normalized data (recommended for thresholding);
+# if you truly want scaled values, change slot to "scale.data"
+expr <- GetAssayData(Tc_8, assay = "RNA", layer = "data")
+
+genes_present <- intersect(genes, rownames(expr))
+if (!all(genes %in% genes_present)) {
+  stop("Missing genes in RNA assay: ", paste(setdiff(genes, genes_present), collapse = ", "))
+}
+
+# Expression per cell
+prdm1_expr <- expr["PRDM1", ]
+runx3_expr <- expr["RUNX3", ]
+
+# Define double-positive cells
+dp <- (prdm1_expr > thr) + (runx3_expr > thr)
+
+# Add group to metadata
+Tc_8$COI <- ifelse(dp, "RUNX3+PRDM1+", "Other")
+
+# Differential expression: double-positive vs other
+Idents(Tc_8) <- "COI"
+DP_DEG <- FindAllMarkers(
+  Tc_8,
+  min.pct = 0.2,
+  logfc.threshold = 0,
+  only.pos = FALSE,
+  test.use = "MAST",
+  verbose = FALSE)
+```
+
+```{r}
+## Genes to Plot
+gene_sets <- list(
+  # --- Cytotoxic Effector / NK-like ---
+  C = c("GNLY", "GZMB", "GZMH", "PRF1", "KLRD1", "FGFBP2", "NKG7"))
+
+Dot <- seu_gene_sets_dot(
+  seu = NULL,
+  markers_df = DP_DEG,
+  markers_gene_col  = "gene",
+  markers_group_col = "cluster",
+  markers_lfc_col   = "avg_log2FC",
+  markers_padj_col  = "p_val_adj",
+  gene_sets = gene_sets,
+  group_by = "cluster",
+  assay    = NULL,
+  use_scaled_for_fill = TRUE,
+  show_missing = TRUE,
+  size_range   = c(1, 5),
+  size_breaks  = c(5, 25, 50),
+  size_limits  = c(0, 50),
+  fill_limits  = c(-0.75, 0.75),
+  fill_palette = viridisLite::viridis(3),
+  x_label      = "",
+  x_angle      = 45,
+  x_text_size  = BASE_PT,
+  y_text_size  = BASE_PT,
+  x_title_size = BASE_PT,
+  bracket_text_size = 7.5,
+  bracket_tick = 0.25,
+  y_expand_add_bottom = 0.60,        # add bottom padding (lifts dots off x-axis)
+  y_expand_add_top    = 0.25,        # add top padding (reduces headroom)
+  y_bracket_offset    = 0.40,        # bracket baseline above top row (in "row" units)
+  y_label_offset      = 0,
+  plot_margin_cm      = c(1.2, 0.6, 0.6, 0.6),
+  cluster_groups = TRUE,
+  cluster_genes  = "within_group",
+  dist_method    = "euclidean",
+  hclust_method  = "complete"
+)  + ggplot2::theme(text = ggplot2::element_text(family = "Times")) + coord_flip() 
+
+svglite("../docs/assets/07-Figure-7/Dot_small.svg", width = 4, height = 3)
+Dot
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/07-Figure-7/Dot_small.svg")
+```
+
+#-----In-house Single Cell GSS Violin------
+## All T
+```{r}
+Tcp <- subset(Tc, PB == "Plaque")
+Tcp$Tissue <- factor(Tcp$Tissue, levels = c("Stable", "Unstable"))
+set <- list(CytoGMS = c("CD8B", "PRDM1", "RUNX3", "GZMB"))
+Tcp <- UCell::AddModuleScore_UCell(Tcp, features = set, w_neg = 1, maxRank = 2000)
+
+Idents(Tcp) <- "Tissue"
+cytoGMS_sc <- VlnPlot(Tcp, c("CytoGMS_UCell"), fill.by = "ident", cols = c("#00C7CC", "#FA7F74"), pt.size = 0, adjust = 1) + geom_boxplot(width=0.1) + NoLegend() + ylab(expression(CD8^{CytoGSS}~"UCell Score")) + 
+BASE_THEME + 
+theme(plot.title = element_text(hjust = 0.5, size = 10),
+      axis.title.x = element_blank(), 
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      aspect.ratio = 2) + 
+NoLegend() + labs(
+  title = expression(atop(
+    CD8^"CytoGSS" ~ "& plaque instability",
+    "(in-house T cell scRNA)"
+  )))
+
+svglite("../docs/assets/07-Figure-7/CytoGMS_sc.svg", width = 3.5, height = 4)
+cytoGMS_sc
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/07-Figure-7/CytoGMS_sc.svg")
+```
+
+## CD8
+```{r}
+set <- list(CytoGMS = c("CD8B", "PRDM1", "RUNX3", "GZMB"))
+p8 <- UCell::AddModuleScore_UCell(p8, features = set, w_neg = 1, maxRank = 2000)
+
+Idents(p8) <- "Tissue"
+cytoGMS_sc8 <- VlnPlot(p8, c("CytoGMS_UCell"), fill.by = "ident", cols = c("#00C7CC", "#FA7F74"), pt.size = 0, adjust = 1) + geom_boxplot(width=0.1) + NoLegend() + ylab(expression(CD8^{CytoGSS}~"UCell Score")) + 
+BASE_THEME  + 
+theme(plot.title = element_text(hjust = 0.5, size = 10),
+      axis.title.x = element_blank(), 
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      aspect.ratio = 2) + 
+NoLegend() + labs(
+  title = expression(atop(
+    CD8^"CytoGSS" ~ "& plaque instability",
+    "(in-house CD8+ T cell scRNA)"
+  )))
+
+svglite("../docs/assets/07-Figure-7/CytoGMS_sc8.svg", width = 2.5, height = 4)
+cytoGMS_sc8
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/07-Figure-7/CytoGMS_sc8.svg")
+```

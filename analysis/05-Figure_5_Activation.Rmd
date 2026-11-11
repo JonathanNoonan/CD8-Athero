@@ -1,0 +1,489 @@
+---
+title: "Figure 5 - Part 1"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
+site: workflowr::wflow_site
+output:
+  workflowr::wflow_html:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Setup {.tabset .tabset-pills}
+## Load the libraries
+```{r message=FALSE, warning=FALSE}
+suppressPackageStartupMessages({
+## Key
+library(Seurat)
+library(scRepertoire)
+library(MAST)
+library(ProjecTILs)
+
+## Wrangling
+library(stringr)
+library(tidyr)
+library(dplyr)
+library(nichenetr)
+
+## Visualization
+library(pals)
+library(DT)
+library(ggplot2)
+library(ggpubr)
+library(RColorBrewer)
+library(circlize)
+library(ComplexHeatmap)
+library(plot1cell)
+library(ggvenn)
+library(ggalluvial)
+library(stringr)
+library(readr)
+library(gridExtra)
+library(tibble)
+library(enrichR)
+library(EnhancedVolcano)
+library(openxlsx)
+library(svglite)
+})
+```
+
+## Load Data
+```{r}
+Tc <- readRDS("../objects/Tc_Mouse.rds")
+```
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = F, message = F, dpi = 300)
+functions <- list.files("../code/", pattern = "\\.R$", full.names = TRUE)
+invisible(lapply(functions, source))
+```
+
+## Set up output directories
+```{r}
+dir.create("../docs/assets/05-Figure-5")
+```
+## Design Elements
+```{r}
+# Create vector colors
+cols <- readRDS("../docs/assets/00-DesignElements/DesignElements.rds")
+```
+
+## Text base
+```{r}
+pt_to_mm <- function(pt) pt / 2.95
+txt_pt <- 10
+txt_mm <- txt_pt / 2.95
+cex_base <- txt_pt / 12
+```
+
+```{r}
+lvl <- c(
+  "CD4 TN",
+  "CD4 TSM",
+  "CD4 TH1DM",
+  "CD4 Regulatory",
+  "CD8 TN",
+  "CD8 TSM",
+  "CD8 Tc1-CTLDM",
+  "DN TSM",
+  "Proliferating"
+  )
+
+lab <- c(
+  "CD4 TN"            = expression("CD4 TN"),
+  "CD4 TSM"           = expression("CD4 TSM"),
+  "CD4 TH1DM"         = expression("CD4 " * T[H1] * DM),
+  "CD4 TCTLDM"        = expression("CD4 " * T[CTL] * DM),
+  "CD4 Regulatory"    = expression("CD4 " * T[reg]),
+  "CD8 TN"              = expression("CD8 TN"),
+  "CD8 TSM"             = expression("CD8 TSM"),
+  "CD8 Tc1-CTLDM"       = expression("CD8 " * T[c1*"-"*CTL] * DM),
+  "DN TSM"           = expression("DN TSM"),
+  "Proliferating"  = expression("Proliferating"))
+
+```
+
+#-----Changes in Representation------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+library(dplyr)
+library(ggplot2)
+
+df <- Tc@meta.data  %>%
+  dplyr::count(Tissue, celltype) %>%              # count combinations
+  group_by(Tissue) %>%                      # within each celltype
+  mutate(percent = 100 * n / sum(n)) %>%      # calculate %
+  ungroup()
+
+
+Percent <- ggplot(df, aes(x = Tissue, y = percent, fill = celltype)) +
+  geom_bar(stat = "identity", width = 0.9, color = "black") +
+  labs(y = "Percent of cells",
+       fill = "Cluster") +
+  theme_pubr(base_family = "Times") +
+  theme(aspect.ratio = 2,
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.text   = element_text(size = txt_pt),
+    axis.title  = element_text(size = txt_pt),
+    legend.title = element_text(size = txt_pt),
+    legend.text  = element_text(size = txt_pt),
+    legend.position = "right",
+    axis.title.x = element_blank()   # remove x-axis title
+  ) + scale_fill_manual(values = cols$celltype_m[levels(Tc)]) + NoLegend()
+
+Percent
+```
+
+```{r}
+Percent_plot <- Percent + NoLegend()
+
+svglite("../docs/assets/05-Figure-5/cluster_data.svg", width = 8, height = 3.5)
+plot_grid(Dot, Percent_plot,
+  align = "hv", axis = "tbrl", 
+  ncol = 2,
+  rel_widths = c(1.5,1))
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/cluster_data.svg")
+```
+
+#-----Venn of DEG------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+Idents(Tc) <- "Tissue"
+Spleen <- FindMarkers(Tc, ident.1 = "Spleen", min.pct = 0.2, logfc.threshold = 0.25, test.use = "MAST", only.pos = T)
+Spleen <- subset(Spleen, p_val_adj < 0.05)
+Stable <- FindMarkers(Tc, ident.1 = "Stable", min.pct = 0.2, logfc.threshold = 0.25, test.use = "MAST", only.pos = T)
+Stable <- subset(Stable, p_val_adj < 0.05)
+Unstable <- FindMarkers(Tc, ident.1 = "Unstable", min.pct = 0.2, logfc.threshold = 0.25, test.use = "MAST", only.pos = T)
+Unstable <- subset(Unstable, p_val_adj < 0.05)
+```
+
+```{r}
+Venn <- list(
+Spleen = rownames(Spleen),
+Stable = rownames(Stable),
+Unstable = rownames(Unstable))
+
+svglite("../docs/assets/05-Figure-5/Venn.svg", width = 4, height = 4)
+ggvenn::ggvenn(Venn, fill_color = c("grey", "#00C7CC", "#FA7F74"), show_percentage = F, text_size = txt_pt-2, set_name_size = txt_pt) & theme(text = element_text(family = "Times"))
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/Venn.svg")
+```
+
+
+#-----Activation and Cytotoxicity------ {.tabset .tabset-pills .tabset-fade}
+## DEG
+```{r}
+table(Unique_vs_Common_Graph$ident1, Unique_vs_Common_Graph$id)
+
+# Set tissue identifier
+Idents(Tc) <- "Tissue"
+
+groups <- c("Spleen", "Stable", "Unstable")
+
+Unique_vs_Common_Graph <- get_unique_and_common_degs(
+  seu          = Tc,
+  groups       = groups,
+  ident_col    = "Tissue",        # change if your column is called something else
+  unique_groups= c("Spleen", "Stable", "Unstable"),
+  common_sets  = list(
+    c("Unstable", "Stable")),
+  min.pct        = 0.2,
+  logfc.threshold= 0.25,
+  pval_cutoff    = 0.05,
+  test.use       = "MAST"
+)
+```
+
+
+```{r}
+export_table <- Unique_vs_Common_Graph
+export_table$ident1 <- NULL
+export_table$ident2 <- NULL
+export_table$contrast <- NULL
+
+save_supp_table(
+  wb_path    = "../docs/assets/Tables/SupplementaryTables.xlsx",
+  table_number = 8,
+  data         = Unique_vs_Common_Graph,
+  title        = "TITLE: Genes upregulated in T cells isolated from murine unstable plaque, stable plaque and spleen",
+  description  = "DESCRIPTION: Genes uniquely upregulated by T cells isolated from atherosclerotic tissues and the spleen. Genes with conserved upregulation in T cells from unstable and stable plaque versus spleen are also identified."
+)
+```
+
+
+## HM
+```{r, fig.height=18, fig.width=2.5, dpi = 300}
+Idents(Tc) <- "Tissue"
+Tc.Avg <- AverageExpression(Tc, assays = "RNA", slot = "scale.data", return.seurat = TRUE)
+```
+
+```{r}
+Heatmap_Genes <- Unique_vs_Common_Graph %>% group_by(cluster) %>% top_n(100, wt = avg_log2FC)
+Heatmap_Genes$Num <- rownames(Heatmap_Genes)
+
+mtx <- Tc.Avg@assays$RNA@layers$scale.data
+mtx <- as.data.frame(mtx)
+colnames(mtx) <- colnames(Tc.Avg)
+rownames(mtx) <- rownames(Tc.Avg)
+         
+mtx_sub <-subset(mtx, rownames(mtx) %in% Heatmap_Genes$gene)
+x <- Heatmap_Genes$gene
+mtx_sub <- mtx_sub[, c(3,2,1)]
+mtx_sub <- mtx_sub %>% arrange(factor(rownames(mtx_sub), levels = x))
+
+meta <- Tc.Avg@meta.data
+meta$cluster <- rownames(meta)
+meta <- meta[c(3,2,1),]
+
+# Set up annotations for rows and clusters
+# genes you want to label
+genes_to_label <- c(
+  "Tcf7", "Sell", "Lef1", "Cd27",
+  "Klrg1", "Il7r", "Stat4", "Itga4",
+  "Tnf", "Klrk1", "Ly6e", "Il18r", "Nrp1", "Jak2",
+  "Gzmb", "Cd44", "Cd69", "Pdcd1", "Bhlhe40", "Icos", "Cxcr6", "Pdcd1", "Il18r", "Tnfrsf4", "Furin", "Fth1", "Gpx1"
+  
+)   # <-- edit this
+
+# find their row indices in the heatmap data
+lab_idx <- which(Heatmap_Genes$gene %in% genes_to_label)
+
+# sanity check (optional)
+Heatmap_Genes$gene[lab_idx]
+
+labels <- rowAnnotation(
+  x = anno_mark(
+    at = lab_idx,
+    labels_rot = -30,
+    labels_gp = gpar(fontsize = txt_pt),
+    padding = unit(1, "mm"),
+    labels = Heatmap_Genes$gene[lab_idx],
+    side = "left"
+  )
+)
+
+cluster_anno <- HeatmapAnnotation(
+  cluster = meta$cluster,
+  show_annotation_name = FALSE,
+  annotation_label = FALSE,
+  annotation_name_rot = 5,
+  show_legend = FALSE,
+  annotation_legend_param = list(labels_gp = gpar(fontsize = 0)),
+  col = list(cluster = cols$Tissue[c(1,3,4)]
+)
+)
+
+# Set up heatmap colors and legend
+col_fun <- colorRamp2(c(-0.75, 0, 0.75), c("blue", "#EEEEEE", "red"))
+heatmap_legend_params <- list(
+  legend_direction = "horizontal",
+  legend_width = unit(1.5, "cm"),
+  labels_gp = gpar(fontsize = txt_pt),
+  labels_rot = -90,
+  title = "",
+  title_gp = gpar(box_fill = "grey"),
+  at = c(-1, 0, 1)
+)
+
+# Create row annotations using HeatmapAnnotation
+right_annotation = rowAnnotation(anno = anno_block(gp = gpar(fill = cols$Tissue[c(1,3,4,5)]),
+        labels = c("Spleen Unique", "Stable Unique", "Unstable Unique", "Plaque Common"), labels_gp = gpar(col = "white", fontsize = txt_pt), labels_rot = -90))
+
+# Draw heatmap
+Hm <- Heatmap(
+  mtx_sub,
+  height = nrow(mtx_sub)*unit(0.3, "mm"),
+  width = ncol(mtx_sub)*unit(3.5, "mm"),
+  border = TRUE,
+  top_annotation = cluster_anno,
+  right_annotation = right_annotation,
+  row_names_gp = gpar(fontsize = 0),
+  left_annotation = labels,
+  col = col_fun,
+  split = Heatmap_Genes$cluster,
+  cluster_rows = TRUE,
+  cluster_columns = FALSE,
+  show_row_dend = FALSE,
+  cluster_row_slices = FALSE,
+  show_column_names = FALSE,
+  cluster_column_slices = FALSE,
+  column_names_side = NULL,
+  row_title = " ",
+  heatmap_legend_param = heatmap_legend_params)
+
+svglite("../docs/assets/05-Figure-5/Tissue_Hm.svg", width = 3, height = 7)
+draw(Hm, heatmap_legend_side = "bottom")
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/Tissue_Hm.svg")
+
+```
+
+#-----Cluster Specific Plaque vs. Blood------ {.tabset .tabset-pills .tabset-fade}
+```{r}
+Idents(Tc) <- "celltype"
+Tc <- subset(Tc, idents = c("Proliferating"), invert = T)
+table(Tc$celltype)
+```
+```{r}
+DefaultAssay(Tc) <- "RNA"
+groups <-  levels(Tc)
+
+# Store results
+deg_results <- list()
+
+for (g in groups) {
+  message("Running DEG for: ", g)
+  
+  # Subset cells of this TRDV group
+  Tc_sub <- subset(Tc, idents = g)
+  Idents(Tc_sub) <- "PB"   # Tissue must contain Plaque/Blood
+  
+  # Run DEG (Plaque vs Blood)
+  deg <- FindMarkers(
+    Tc_sub,
+    ident.1 = "Plaque",
+    ident.2 = "Spleen",
+    min.pct = 0.2,
+    logfc.threshold = 0.25,
+    test.use = "MAST",
+    only.pos = F
+  )
+  
+  # Add cluster info and gene names
+  deg$cluster <- ifelse(deg$avg_log2FC > 0, "Plaque", "Spleen")
+  deg$gene <- rownames(deg)
+  deg <- subset(deg, p_val_adj < 0.05)
+  
+  # Save to list
+  deg_results[[g]] <- deg
+}
+
+# Optionally combine into one big table
+all_deg_PB_list <- deg_results
+all_deg_PB <- bind_rows(deg_results, .id = "celltype")
+rownames(all_deg_PB_list) <- NULL
+deg_results <- NULL
+
+counts_plot_PB <- count_and_plot_deg_lollipop(
+  deg_list        = all_deg_PB_list,
+  contrast_levels = c("Plaque","Spleen"),
+  pval_col        = "p_val_adj",
+  lfc_col         = "avg_log2FC",
+  alpha           = 0.05,
+  lfc_thresh      = 0.25,
+  font_family = "Times",
+  txt_pt = 10,
+  pt_size = 4,
+  aspect = NULL,
+  palette = cols$Tissue,
+) + theme(text = element_text(family = "Times", size = txt_pt)) + scale_y_discrete(limits = lvl[1:8], labels = lab)
+
+counts_plot_PB
+```
+
+```{r}
+plot_genes <- list(
+`Plaque vs. Blood` = c("Ldha", "Nr4a1", "Nr4a2", "Nr4a3", "Mcl1", "Slc2a3",
+"Slc38a2", "Slc3a2", "Slc7a5", "Stat4", "Adgre5",
+"Areg", "Arf4", "Icos", "Bhlhe40", "Ccl4", "Ccl5",
+"Cd44", "Cd55", "Cd96", "Cxcr4", "Crem", "Cxcr3",
+"Cxcr6", "Fth1", "Id2", "Ifngr1", "Ifng", "Il21r",
+"Il2rb", "Klf6", "Nr3c1", "Gzma", "Stat3", "Stat4", "Tnf"))
+
+deg_plot <- subset(all_deg_PB, cluster == "Plaque")
+deg_plot$regulation <- deg_plot$cluster
+deg_plot$cluster <- NULL
+
+plot_levels <- c(lvl)
+
+gene_counts <- deg_plot |>
+  dplyr::count(gene, name = "n")
+
+deg_plot$celltype <- factor(deg_plot$celltype, levels = rev(plot_levels))
+
+Plaque_Blood_Dot <- seu_gene_sets_dot(
+  seu = NULL,
+    markers_df = deg_plot,
+    markers_gene_col  = "gene",
+    markers_group_col = "celltype",
+    markers_lfc_col   = "avg_log2FC",
+    markers_padj_col  = "p_val_adj",
+    gene_sets = plot_genes,                         # named list: list("Group A"=c("G1","G2(+)"), "Group B"=c(...))
+    group_by = "cluster",              # meta.data column (like DotPlot(group.by=))
+    assay    = NULL,                   # NULL => DefaultAssay(seu)
+    use_scaled_for_fill = TRUE,  # TRUE: fill = avg.exp.scaled; FALSE: avg.exp (raw)
+    show_missing = T,
+    # aesthetics (DotPlot-like)
+    size_range   = c(1, 10),           # bubble size range
+    size_breaks  = c(5, 25, 50),  # % expressing
+    size_limits  = c(0, 100),          # % expressing limits
+    fill_limits  = c(-1.5, 1.5),           # when use_scaled_for_fill=TRUE
+    fill_palette = viridisLite::viridis(5),
+    x_label      = "",
+    x_angle      = 45,
+    x_text_size  = 15,
+    y_text_size  = 15,
+    x_title_size = 15,
+    bracket_text_size = 7.5,
+    bracket_tick = 0.25,
+    # layout/headroom controls
+    y_expand_add_bottom = 0.60,        # add bottom padding (lifts dots off x-axis)
+    y_expand_add_top    = 0.25,        # add top padding (reduces headroom)
+    y_bracket_offset    = 0.40,        # bracket baseline above top row (in "row" units)
+    y_label_offset      = 0.18,        # text above bracket baseline
+    plot_margin_cm      = c(1.2, 0.6, 0.6, 0.6),  # top, right, bottom, left
+    # NEW: clustering options
+    cluster_groups = FALSE,            # reorder rows (clusters) by hclust
+    cluster_genes  = c("none","within_group","global"),
+    dist_method    = "euclidean",
+    hclust_method  = "complete") + theme(text = element_text(family = "Times")) + scale_y_discrete(limits = lvl[1:8], labels = lab)
+
+Plaque_Blood_Dot
+```
+
+
+
+# ----Cytotoxicity in CD8s----
+```{r}
+t_common <- theme(
+    aspect.ratio = 1,
+    text = element_text(family = "Times"),
+    axis.text.x  = element_text(size = txt_pt),
+    axis.text.y  = element_text(size = txt_pt),
+    axis.title.x = element_text(size = txt_pt),
+    axis.title.y = element_text(size = txt_pt),
+    plot.margin  = margin(1, 1, 1, 1),
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.text  = element_text(size = txt_pt, angle = 0),
+    legend.justification = "centre"
+    )
+
+a <- FeaturePlot(Tc, features = "Gzmb", order = TRUE, pt.size = 0.005) & scale_color_gradientn(colours = rev(inferno(256)), na.value = "grey80", limits = c(0.25, NA), breaks = c(0, 1, 2, 3, 4)) & labs(color = "Expression") & t_common & labs(
+    title = "Gzmb")
+
+svglite("../docs/assets/05-Figure-5/Gzmb_feat.svg", width = 2.5, height = 2.5)
+a
+invisible(dev.off())
+knitr::include_graphics("../docs/assets/05-Figure-5/Gzmb_feat.svg")
+```
+
+```{r}
+Idents(Tc) <- "celltype"
+
+genes <- c("Gzmb")
+VlnPlot(Tc, genes, split.by = "Tissue", cols = cols$Tissue[c(2:4)], pt.size = 0)
+```
+
+# Save
+```{r}
+dir.create("../output/05-Figure-5")
+saveRDS(Tc, "../output/05-Figure-5/Tc_mouse.rds")
+```
+
+```{r}
+sessionInfo()
+```
+

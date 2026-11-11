@@ -53,7 +53,7 @@ library(cowplot)
 
 ```{r, include=FALSE}
 knitr::opts_chunk$set(warning = F, message = F, dpi = 300)
-functions <- list.files("../../../../../My_Analysis/code/", pattern = "\\.R$", full.names = TRUE)
+functions <- list.files("../code/", pattern = "\\.R$", full.names = TRUE)
 invisible(lapply(functions, source))
 ```
 

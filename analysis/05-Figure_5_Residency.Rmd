@@ -188,6 +188,7 @@ invisible(lapply(functions, source))
 ```{r}
 dir.create("../docs/assets/05-Figure-5")
 ```
+
 ## Design Elements
 ```{r}
 # Create vector colors

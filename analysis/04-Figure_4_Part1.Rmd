@@ -1186,3 +1186,8 @@ saveRDS(Gene_Sets, "../objects/04-Figure-4/Gene_Sets.rds")
 saveRDS(Clean_Sets, "../objects/04-Figure-4/Clean_Gene_Sets_UpOnly.rds")
 saveRDS(New_Set, "../objects/04-Figure-4/Plaque_TRM_Set.rds")
 ```
+
+```{r}
+sessionInfo()
+```
+

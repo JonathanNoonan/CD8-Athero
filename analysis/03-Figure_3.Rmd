@@ -1053,3 +1053,7 @@ knitr::include_graphics("../docs/assets/03-Figure-3/Exh_Combined.svg")
 saveRDS(Tc,"../objects/Tc.rds")
 saveRDS(Tc_8, "../objects/Tc_8.rds")
 ```
+
+```{r}
+sessionInfo()
+```

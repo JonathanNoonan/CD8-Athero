@@ -849,6 +849,8 @@ saveRDS(Tc_4, "../objects/Tc_4.rds")
 saveRDS(Tc_8, "../objects/Tc_8.rds")
 ```
 
-
+```{r}
+sessionInfo()
+```
 
 

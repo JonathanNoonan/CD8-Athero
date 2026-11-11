@@ -20,7 +20,6 @@ set.seed(01122023)
 
 ```{r}
 pt_to_mm <- function(pt) pt / 2.95
-# ---- Text size standard (define once per project) ----
 txt_pt <- 10
 txt_mm <- txt_pt / 2.95
 cex_base <- txt_pt / 12

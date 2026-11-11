@@ -551,3 +551,7 @@ knitr::include_graphics("../docs/assets/04-Figure-4/Sig_Combined.svg")
 ```{r}
 saveRDS(sc, "../output/04-Figure-4/sc.rds")
 ```
+
+```{r}
+sessionInfo()
+```
